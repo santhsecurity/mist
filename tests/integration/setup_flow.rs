@@ -1,11 +1,16 @@
 mod helpers;
 
 use flow::config::Config;
+use std::sync::Mutex;
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 /// Default config can be created and saved to disk.
 #[test]
 fn test_default_config_created_and_saved() {
+    let _guard = ENV_LOCK.lock().unwrap();
     let tmp = tempfile::tempdir().unwrap();
+    let original = std::env::var_os("XDG_CONFIG_HOME");
     // Redirect the config directory into the temp folder so we don't touch
     // the user's real configuration.
     std::env::set_var("XDG_CONFIG_HOME", tmp.path());
@@ -24,6 +29,12 @@ fn test_default_config_created_and_saved() {
     assert_eq!(loaded.cleanup_backend, config.cleanup_backend);
     assert_eq!(loaded.cleanup_enabled, config.cleanup_enabled);
     assert_eq!(loaded.max_recording_secs, config.max_recording_secs);
+
+    if let Some(val) = original {
+        std::env::set_var("XDG_CONFIG_HOME", val);
+    } else {
+        std::env::remove_var("XDG_CONFIG_HOME");
+    }
 }
 
 /// Config round-trips through TOML serialization without data loss.

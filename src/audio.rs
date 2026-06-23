@@ -142,9 +142,7 @@ impl AudioRecorder {
         drop(self.stream.take());
         let samples = {
             let mut buf = self.samples.lock().unwrap();
-            let data = buf.clone();
-            buf.clear();
-            data
+            std::mem::take(&mut *buf)
         };
 
         let resampled = if self.sample_rate != 16000 {

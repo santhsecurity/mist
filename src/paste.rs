@@ -12,6 +12,12 @@ enum LinuxTypingBackend {
     Ydotool,
 }
 
+/// The detected typing backend on Linux, cached for the process lifetime.
+///
+/// Detection runs once on first paste. If no typing tool is installed at
+/// startup, the `None` result is cached permanently — installing xdotool
+/// later won't take effect until Flow is restarted. This is intentional for
+/// a daemon: the environment shouldn't change under a running process.
 #[cfg(target_os = "linux")]
 static LINUX_BACKEND: OnceLock<Option<LinuxTypingBackend>> = OnceLock::new();
 

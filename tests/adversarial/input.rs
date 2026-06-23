@@ -1,6 +1,5 @@
 use flow::config::Config;
 use flow::hotkey::parse_hotkey;
-use flow::paste::paste_text;
 
 fn fast_cleanup(text: &str) -> anyhow::Result<String> {
     let cfg = Config {
@@ -18,14 +17,12 @@ fn hotkey_empty_string() {
 #[test]
 fn hotkey_one_mb_string() {
     let s = "A+".repeat(512 * 1024);
-    // Should not panic on very long input; may or may not parse successfully
     let _ = parse_hotkey(&s);
 }
 
 #[test]
 fn hotkey_null_bytes() {
     let s = "Ctrl\0+A";
-    // Should not panic; null byte is not valid but parser may ignore it
     let _ = parse_hotkey(s);
 }
 
@@ -56,7 +53,6 @@ fn cleanup_only_whitespace() {
 
 #[test]
 fn cleanup_huge_um_chain() {
-    // ~100 KB of " um um um " with trailing spaces so pattern matches
     let text = " um ".repeat(100_000 / 3);
     let result = fast_cleanup(&text).unwrap();
     assert!(!result.contains(" um "));
@@ -98,7 +94,6 @@ hotkey = "F12"
 unknown_field = "hello"
 another_unknown = 42
 "#;
-    // Unknown fields produce warnings but don't fail deserialization.
     let cfg: Config = toml::from_str(toml_str).unwrap();
     assert_eq!(cfg.hotkey, "F12");
 }
@@ -116,18 +111,19 @@ fn config_wrong_types() {
     }
 }
 
+// NOTE: paste_text tests are deliberately limited to the error path.
+// Calling paste_text with actual text invokes xdotool/wtype/ydotool which
+// types into whatever window is focused — not safe in a test environment.
 #[test]
-fn paste_empty_string() {
-    let _ = paste_text("");
-}
-
-#[test]
-fn paste_unicode() {
-    let _ = paste_text("Hello 世界 🌍");
-}
-
-#[test]
-fn paste_very_long_string() {
-    let s = "a".repeat(10_000);
-    let _ = paste_text(&s);
+fn paste_no_tool_available() {
+    // With PATH neutered, paste should fail cleanly.
+    let original_path = std::env::var_os("PATH");
+    std::env::set_var("PATH", "/dev/null");
+    let result = flow::paste::paste_text("safe because no tool can run");
+    assert!(result.is_err());
+    if let Some(val) = original_path {
+        std::env::set_var("PATH", val);
+    } else {
+        std::env::remove_var("PATH");
+    }
 }

@@ -44,14 +44,22 @@ pub fn apply(text: &str, config: &Config) -> String {
             if let Some(correct) = correction_map.get(&lower) {
                 result.push_str(correct);
             } else {
-                // Fuzzy match against all patterns.
+                // Fuzzy match against all patterns. Skip candidates whose
+                // length differs by more than 40% — they can't possibly reach
+                // the 0.88 Jaro-Winkler threshold and this avoids computing
+                // the full similarity for most dictionary entries.
                 let mut best_match: Option<(&str, f64)> = None;
                 for (pattern, correct) in &correction_map {
+                    let len_ratio = lower.len().min(pattern.len()) as f64
+                        / lower.len().max(pattern.len()).max(1) as f64;
+                    if len_ratio < 0.6 {
+                        continue;
+                    }
                     let sim = jaro_winkler(&lower, pattern);
-                    if sim >= 0.88 {
-                        if best_match.is_none() || sim > best_match.unwrap().1 {
-                            best_match = Some((correct.as_str(), sim));
-                        }
+                    if sim >= 0.88
+                        && (best_match.is_none() || sim > best_match.unwrap().1)
+                    {
+                        best_match = Some((correct.as_str(), sim));
                     }
                 }
                 if let Some((correct, _)) = best_match {

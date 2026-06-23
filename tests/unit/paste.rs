@@ -6,9 +6,10 @@ static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_paste_text_exists_and_has_correct_signature() {
-    // Verify the public API is callable and returns Result<()>
-    let result = flow::paste::paste_text("");
-    let _result: anyhow::Result<()> = result;
+    // Only verify the function signature compiles. Do NOT call paste_text
+    // with actual text — it invokes xdotool/wtype which types into the
+    // focused window.
+    let _fn_ptr: fn(&str) -> anyhow::Result<()> = flow::paste::paste_text;
 }
 
 #[test]
@@ -30,33 +31,7 @@ fn test_paste_text_error_when_no_typing_tool_available() {
     }
 }
 
-#[test]
-fn test_paste_text_actual_typing() {
-    let has_display = std::env::var_os("DISPLAY").is_some()
-        || std::env::var_os("WAYLAND_DISPLAY").is_some();
-
-    let tool_available = std::process::Command::new("xdotool")
-        .arg("--version")
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-        || std::process::Command::new("wtype")
-            .arg("--version")
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-        || std::process::Command::new("ydotool")
-            .arg("--version")
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-
-    if !has_display || !tool_available {
-        eprintln!("Skipping actual typing test: no display or typing tool available");
-        return;
-    }
-
-    // We only verify the call completes without panicking.
-    // Actual typing success depends on the environment (focus, permissions).
-    let _result = flow::paste::paste_text("flow_test");
-}
+// NOTE: The old test_paste_text_actual_typing test is removed.
+// It called xdotool/wtype which types into the user's active window,
+// injecting "flow_test" into whatever app is focused. That is not safe
+// in a test environment.

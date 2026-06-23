@@ -43,13 +43,32 @@ impl SttEngine {
         }
 
         let ctx = WhisperContext::new_with_params(
-            model_path.to_str().unwrap(),
+            model_path.to_str().ok_or_else(|| {
+                anyhow::anyhow!("Model path contains invalid UTF-8: {:?}", model_path)
+            })?,
             params,
         )?;
 
         let state = ctx.create_state()?;
 
         Ok(Self { state })
+    }
+
+    /// Run a tiny dummy transcription to prime JIT caches, memory allocations,
+    /// and GPU kernels. Call once at startup so the first real dictation doesn't
+    /// pay cold-start penalties (~200-800ms saved).
+    pub fn warm_up(&mut self) {
+        // 0.5 seconds of silence at 16 kHz.
+        let silence = vec![0.0f32; 8000];
+        let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+        params.set_n_threads(1);
+        params.set_language(Some("en"));
+        params.set_print_special(false);
+        params.set_print_progress(false);
+        params.set_print_realtime(false);
+        params.set_print_timestamps(false);
+        let _ = self.state.full(params, &silence);
+        info!("STT engine warmed up");
     }
 
     pub fn transcribe(

@@ -7,7 +7,7 @@ use log::{error, info, warn};
 use notify_rust::Notification;
 use std::fs::OpenOptions;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::channel;
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -34,6 +34,10 @@ enum Job {
     Final(Vec<f32>),
 }
 
+/// Minimum recording duration in seconds. Anything shorter is discarded as an
+/// accidental press — not enough audio for Whisper to produce anything useful.
+const MIN_RECORDING_SECS: f32 = 0.4;
+
 fn main() -> Result<()> {
     init_logging();
     let cli = Cli::parse();
@@ -44,7 +48,7 @@ fn main() -> Result<()> {
     }
 }
 
-/// Maximum log file size before we truncate (10 MB).
+/// Maximum log file size before we rotate (10 MB).
 const MAX_LOG_SIZE: u64 = 10 * 1024 * 1024;
 
 fn init_logging() {
@@ -92,7 +96,11 @@ fn run_daemon() -> Result<()> {
     let effective_dict = config.effective_dictionary();
     let effective_dict_clone = effective_dict.clone();
 
-    let (stt_tx, stt_rx) = channel::<Job>();
+    let (stt_tx, stt_rx) = mpsc::channel::<Job>();
+
+    // Channel for the STT thread to send results back to the main thread
+    // so we can show them in notifications.
+    let (result_tx, result_rx) = mpsc::channel::<TranscriptionResult>();
 
     // Graceful shutdown flag.
     let running = Arc::new(AtomicBool::new(true));
@@ -110,6 +118,7 @@ fn run_daemon() -> Result<()> {
             Ok(p) => p,
             Err(e) => {
                 error!("Failed to resolve model path: {}", e);
+                let _ = result_tx.send(TranscriptionResult::Error(format!("Model path error: {}", e)));
                 return;
             }
         };
@@ -118,9 +127,15 @@ fn run_daemon() -> Result<()> {
             Ok(e) => e,
             Err(err) => {
                 error!("Failed to load STT engine: {}", err);
+                let _ = result_tx.send(TranscriptionResult::Error(format!("STT load error: {}", err)));
                 return;
             }
         };
+
+        // Pre-warm: run a tiny dummy transcription so the first real
+        // dictation doesn't pay cold-start JIT/cache penalties.
+        engine.warm_up();
+        let _ = result_tx.send(TranscriptionResult::Ready);
 
         while let Ok(job) = stt_rx.recv() {
             match job {
@@ -136,12 +151,16 @@ fn run_daemon() -> Result<()> {
                     ) {
                         Ok(text) if !text.is_empty() => {
                             info!("[live] {}", text);
+                            let _ = result_tx.send(TranscriptionResult::Preview(text));
                         }
                         _ => {}
                     }
                 }
                 Job::Final(samples) => {
-                    info!("Transcribing {} samples...", samples.len());
+                    let start = Instant::now();
+                    info!("Transcribing {} samples ({:.1}s audio)...",
+                        samples.len(), samples.len() as f32 / 16000.0);
+
                     match engine.transcribe(
                         &samples,
                         &config_clone.language,
@@ -150,39 +169,30 @@ fn run_daemon() -> Result<()> {
                     ) {
                         Ok(mut text) => {
                             if text.is_empty() {
+                                let _ = result_tx.send(TranscriptionResult::Empty);
                                 continue;
                             }
                             if config_clone.cleanup_enabled {
-                                info!("Cleaning up ({} backend)...", config_clone.cleanup_backend);
                                 match cleanup::cleanup(&text, &config_clone) {
-                                    Ok(cleaned) => {
-                                        if !cleaned.is_empty() {
-                                            text = cleaned;
-                                        }
-                                    }
+                                    Ok(cleaned) if !cleaned.is_empty() => text = cleaned,
+                                    Ok(_) => {}
                                     Err(e) => warn!("Cleanup failed: {}", e),
                                 }
                             }
-                            info!("Result: {}", text);
+                            let elapsed = start.elapsed();
+                            info!("Transcribed in {:.1}s: {}", elapsed.as_secs_f32(), text);
+
                             if let Err(e) = paste::paste_text(&text) {
                                 error!("Paste failed: {}", e);
-                                let _ = Notification::new()
-                                    .summary("Flow")
-                                    .body(&format!(
-                                        "Copied: {}",
-                                        text.chars().take(80).collect::<String>()
-                                    ))
-                                    .timeout(3000)
-                                    .show();
+                                let _ = result_tx.send(TranscriptionResult::PasteFailed(text));
                             } else {
-                                let _ = Notification::new()
-                                    .summary("Flow")
-                                    .body("Dictation pasted")
-                                    .timeout(2000)
-                                    .show();
+                                let _ = result_tx.send(TranscriptionResult::Done(text, elapsed));
                             }
                         }
-                        Err(e) => error!("Transcription failed: {}", e),
+                        Err(e) => {
+                            error!("Transcription failed: {}", e);
+                            let _ = result_tx.send(TranscriptionResult::Error(e.to_string()));
+                        }
                     }
                 }
             }
@@ -204,12 +214,19 @@ fn run_daemon() -> Result<()> {
     let mut preview_buffer: Option<std::sync::Arc<std::sync::Mutex<Vec<f32>>>> = None;
     let mut last_preview_len: usize = 0;
     let mut last_draw = Instant::now();
+    let mut recording_start = Instant::now();
 
     let running_loop = running.clone();
 
     event_loop.run(move |event, _, control_flow| {
-        // Sleep for 16ms between iterations (~60 Hz) instead of busy-looping.
-        *control_flow = ControlFlow::WaitUntil(Instant::now() + Duration::from_millis(16));
+        // Adaptive tick rate: fast during recording (smooth animation),
+        // slow when idle (saves CPU — 2 Hz is plenty for hotkey polling).
+        let tick = if recording {
+            Duration::from_millis(16) // ~60 Hz
+        } else {
+            Duration::from_millis(500) // 2 Hz
+        };
+        *control_flow = ControlFlow::WaitUntil(Instant::now() + tick);
 
         // Check for graceful shutdown.
         if !running_loop.load(Ordering::Relaxed) {
@@ -219,15 +236,68 @@ fn run_daemon() -> Result<()> {
 
         match event {
             Event::NewEvents(StartCause::Init) => {
-                info!("Flow running. Press {} to dictate.", config.hotkey);
-                info!("Config: {:?}", config::Config::path().unwrap_or_default());
-                info!("Threads: {}, max recording: {}s", config.n_threads, config.max_recording_secs);
+                info!("Flow daemon starting...");
+                info!("Hotkey: {} | Model: {} | Threads: {} | Max: {}s",
+                    config.hotkey, config.model, config.n_threads, config.max_recording_secs);
                 if !effective_dict.is_empty() {
                     info!("Dictionary: {:?}", effective_dict);
                 }
+                let _ = Notification::new()
+                    .summary("Flow")
+                    .body(&format!("Ready — press {} to dictate", config.hotkey))
+                    .timeout(3000)
+                    .show();
             }
             Event::MainEventsCleared => {
-                // Check hotkey events.
+                // --- Check for results from the STT thread ---
+                while let Ok(result) = result_rx.try_recv() {
+                    match result {
+                        TranscriptionResult::Ready => {
+                            info!("STT engine ready (warmed up)");
+                        }
+                        TranscriptionResult::Preview(text) => {
+                            let _ = Notification::new()
+                                .summary("Flow — Preview")
+                                .body(&truncate(&text, 120))
+                                .timeout(2000)
+                                .show();
+                        }
+                        TranscriptionResult::Done(text, elapsed) => {
+                            let _ = Notification::new()
+                                .summary("Flow ✓")
+                                .body(&format!(
+                                    "\"{}\" ({:.1}s)",
+                                    truncate(&text, 80),
+                                    elapsed.as_secs_f32()
+                                ))
+                                .timeout(3000)
+                                .show();
+                        }
+                        TranscriptionResult::Empty => {
+                            let _ = Notification::new()
+                                .summary("Flow")
+                                .body("No speech detected")
+                                .timeout(2000)
+                                .show();
+                        }
+                        TranscriptionResult::PasteFailed(text) => {
+                            let _ = Notification::new()
+                                .summary("Flow — Paste failed")
+                                .body(&format!("Text: {}", truncate(&text, 100)))
+                                .timeout(5000)
+                                .show();
+                        }
+                        TranscriptionResult::Error(msg) => {
+                            let _ = Notification::new()
+                                .summary("Flow — Error")
+                                .body(&truncate(&msg, 120))
+                                .timeout(5000)
+                                .show();
+                        }
+                    }
+                }
+
+                // --- Check hotkey events ---
                 while let Ok(event) = receiver.try_recv() {
                     if event.id != hotkey.id() {
                         continue;
@@ -242,17 +312,13 @@ fn run_daemon() -> Result<()> {
                                         error!("Failed to start recording: {}", e);
                                     } else {
                                         recording = true;
+                                        recording_start = Instant::now();
                                         last_preview_len = 0;
                                         preview_buffer = Some(r.buffer());
                                         recorder = Some(r);
                                         if config.show_overlay {
                                             overlay.show();
                                         }
-                                        let _ = Notification::new()
-                                            .summary("Flow")
-                                            .body("Recording...")
-                                            .timeout(10000)
-                                            .show();
                                     }
                                 }
                                 Err(e) => error!("Recorder init failed: {}", e),
@@ -265,6 +331,7 @@ fn run_daemon() -> Result<()> {
                                 &mut recording,
                                 &mut preview_buffer,
                                 &mut last_preview_len,
+                                recording_start,
                                 &config,
                                 &overlay,
                                 &stt_tx,
@@ -272,13 +339,12 @@ fn run_daemon() -> Result<()> {
                         }
                         HotKeyState::Pressed if recording => {
                             // Fallback: second press also stops (toggle mode).
-                            // This handles keyboards/systems that don't emit
-                            // Released events reliably.
                             stop_recording(
                                 &mut recorder,
                                 &mut recording,
                                 &mut preview_buffer,
                                 &mut last_preview_len,
+                                recording_start,
                                 &config,
                                 &overlay,
                                 &stt_tx,
@@ -288,16 +354,18 @@ fn run_daemon() -> Result<()> {
                     }
                 }
 
-                // Check if recording was capped at max duration.
+                // --- Check max duration cap ---
                 if recording {
                     if let Some(ref r) = recorder {
                         if r.was_capped() {
-                            warn!("Max recording duration ({} s) reached, auto-stopping.", config.max_recording_secs);
+                            warn!("Max recording duration ({}s) reached, auto-stopping.",
+                                config.max_recording_secs);
                             stop_recording(
                                 &mut recorder,
                                 &mut recording,
                                 &mut preview_buffer,
                                 &mut last_preview_len,
+                                recording_start,
                                 &config,
                                 &overlay,
                                 &stt_tx,
@@ -306,14 +374,13 @@ fn run_daemon() -> Result<()> {
                     }
                 }
 
-                // Live stream preview.
+                // --- Live stream preview ---
                 if config.live_stream && recording {
                     if let Some(ref buf) = preview_buffer {
                         if let Ok(lock) = buf.lock() {
                             let current_len = lock.len();
                             let new_samples = current_len.saturating_sub(last_preview_len);
                             if new_samples >= 24000 {
-                                // 1.5 seconds of new audio at 16kHz
                                 last_preview_len = current_len;
                                 let _ = stt_tx.send(Job::Preview(lock.clone()));
                             }
@@ -321,9 +388,8 @@ fn run_daemon() -> Result<()> {
                     }
                 }
 
-                // Render overlay animation (cap at ~30 FPS).
-                if recording && config.show_overlay && last_draw.elapsed() >= Duration::from_millis(33)
-                {
+                // --- Render overlay animation (~30 FPS during recording) ---
+                if recording && config.show_overlay && last_draw.elapsed() >= Duration::from_millis(33) {
                     last_draw = Instant::now();
                     let _ = overlay.draw();
                 }
@@ -333,14 +399,24 @@ fn run_daemon() -> Result<()> {
     });
 }
 
+enum TranscriptionResult {
+    Ready,
+    Preview(String),
+    Done(String, Duration),
+    Empty,
+    PasteFailed(String),
+    Error(String),
+}
+
 fn stop_recording(
     recorder: &mut Option<audio::AudioRecorder>,
     recording: &mut bool,
     preview_buffer: &mut Option<std::sync::Arc<std::sync::Mutex<Vec<f32>>>>,
     last_preview_len: &mut usize,
+    recording_start: Instant,
     config: &config::Config,
     overlay: &overlay::Overlay,
-    stt_tx: &std::sync::mpsc::Sender<Job>,
+    stt_tx: &mpsc::Sender<Job>,
 ) {
     if let Some(mut r) = recorder.take() {
         *recording = false;
@@ -349,16 +425,43 @@ fn stop_recording(
         if config.show_overlay {
             overlay.hide();
         }
-        let _ = Notification::new()
-            .summary("Flow")
-            .body("Transcribing...")
-            .timeout(5000)
-            .show();
+
+        let duration = recording_start.elapsed();
+
+        // Short recording guard: discard accidental taps.
+        if duration.as_secs_f32() < MIN_RECORDING_SECS {
+            info!("Recording too short ({:.1}s < {:.1}s), discarding.",
+                duration.as_secs_f32(), MIN_RECORDING_SECS);
+            let _ = r.stop(); // drain the buffer
+            return;
+        }
+
+        info!("Recorded {:.1}s, sending to STT...", duration.as_secs_f32());
         match r.stop() {
             Ok(samples) => {
+                if samples.len() < 4000 {
+                    // Less than 0.25s of audio after VAD trim — nothing useful.
+                    info!("Audio too short after VAD trim ({} samples), skipping.", samples.len());
+                    let _ = Notification::new()
+                        .summary("Flow")
+                        .body("No speech detected")
+                        .timeout(2000)
+                        .show();
+                    return;
+                }
                 let _ = stt_tx.send(Job::Final(samples));
             }
             Err(e) => error!("Failed to stop recording: {}", e),
         }
+    }
+}
+
+/// Truncate a string to `max` characters, appending "…" if truncated.
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(max.saturating_sub(1)).collect();
+        format!("{}…", truncated)
     }
 }
