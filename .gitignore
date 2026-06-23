@@ -1,0 +1,12 @@
+/target
+*.log
+*.wav
+*.mp3
+*.ogg
+*.bin
+*.gguf
+.env
+.vscode/
+.idea/
+*.swp
+*~

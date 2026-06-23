@@ -1,0 +1,106 @@
+[package]
+name = "flow"
+version = "0.1.0"
+edition = "2021"
+description = "Local-first voice dictation daemon"
+authors = ["Flow Contributors"]
+license = "MIT"
+repository = "https://github.com/santhsecurity/flow"
+keywords = ["voice", "dictation", "whisper", "stt", "accessibility"]
+categories = ["command-line-utilities", "multimedia::audio"]
+
+[features]
+default = []
+cuda = ["whisper-rs/cuda"]
+metal = ["whisper-rs/metal"]
+vulkan = ["whisper-rs/vulkan"]
+
+[dependencies]
+anyhow = "1"
+arboard = "3"
+candle = { package = "candle-core", version = "0.10" }
+candle-transformers = "0.10"
+clap = { version = "4", features = ["derive"] }
+cpal = "0.15"
+ctrlc = "3"
+dialoguer = "0.11"
+directories = "6"
+global-hotkey = "0.6"
+notify-rust = "4"
+env_logger = "0.11"
+log = "0.4"
+regex = "1"
+rubato = "0.16"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+strsim = "0.11"
+tao = "0.32"
+tokenizers = "0.22"
+toml = "0.8"
+ureq = "2"
+whisper-rs = "0.14"
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+softbuffer = "0.4"
+enigo = "0.3"
+
+[dev-dependencies]
+tempfile = "3"
+proptest = "1"
+
+[[test]]
+name = "unit_config"
+path = "tests/unit/config.rs"
+
+[[test]]
+name = "unit_hotkey"
+path = "tests/unit/hotkey.rs"
+
+[[test]]
+name = "unit_paste"
+path = "tests/unit/paste.rs"
+
+[[test]]
+name = "unit_cleanup"
+path = "tests/unit/cleanup.rs"
+
+[[test]]
+name = "integration_dictation_flow"
+path = "tests/integration/dictation_flow.rs"
+
+[[test]]
+name = "integration_setup_flow"
+path = "tests/integration/setup_flow.rs"
+
+[[test]]
+name = "prop_hotkey"
+path = "tests/prop/hotkey.rs"
+
+[[test]]
+name = "prop_cleanup"
+path = "tests/prop/cleanup.rs"
+
+[[test]]
+name = "prop_config"
+path = "tests/prop/config.rs"
+
+[[test]]
+name = "adversarial_input"
+path = "tests/adversarial/input.rs"
+
+[[test]]
+name = "adversarial_cleanup"
+path = "tests/adversarial/cleanup.rs"
+
+[[test]]
+name = "regression_link_xdo"
+path = "tests/regression/link_xdo.rs"
+
+[[test]]
+name = "regression_model_download"
+path = "tests/regression/model_download.rs"
+
+[[test]]
+name = "regression_whisper_tensor"
+path = "tests/regression/whisper_tensor.rs"

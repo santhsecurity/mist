@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Flow
+Comment=Local voice dictation daemon — push-to-talk, transcribe, type
+Exec=flow run
+Type=Application
+Terminal=false
+Categories=Utility;Accessibility;Audio;
+Icon=audio-input-microphone
+StartupNotify=false
+X-GNOME-Autostart-Enabled=true
