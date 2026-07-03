@@ -1,5 +1,5 @@
 use std::time::Instant;
-use tiny_skia::{Color, FillRule, GradientStop, LineCap, LineJoin, Paint, PathBuilder, Pixmap, Point, SpreadMode, Stroke, Transform};
+use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
 /// Visual state of the overlay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,19 +10,14 @@ pub enum OverlayState {
     Error,
 }
 
-/// Refined, minimal software renderer for the Mist overlay.
+/// Minimal monochrome bar renderer for the Mist overlay.
 ///
-/// Design notes:
-/// - Monochrome, low-contrast capsule so it melts into the desktop.
-/// - Single accent color for the waveform (soft indigo or amber), no neon.
-/// - Clean system typography, no faux-glow text halos.
-/// - Anti-aliased vector shapes only.
+/// No waveforms, no neon, no gradients — just a sleek black pill with white
+/// typography. The state is communicated by the text itself.
 pub struct Renderer {
     width: u32,
     height: u32,
     state: OverlayState,
-    samples: Vec<f32>,
-    smoothed: Vec<f32>,
     text: Option<String>,
     font: Option<fontdue::Font>,
     start: Instant,
@@ -34,8 +29,6 @@ impl Renderer {
             width,
             height,
             state: OverlayState::Listening,
-            samples: vec![0.0; 200],
-            smoothed: vec![0.0; 200],
             text: None,
             font: load_font(),
             start: Instant::now(),
@@ -63,21 +56,9 @@ impl Renderer {
         self.state = state;
     }
 
-    /// Replace the current waveform samples. The renderer smoothly
-    /// interpolates toward these values each frame.
-    pub fn set_waveform_samples(&mut self, samples: &[f32]) {
-        if samples.is_empty() {
-            return;
-        }
-        let target_len = self.samples.len();
-        self.samples.clear();
-        self.samples.reserve(target_len);
-        let step = samples.len() as f32 / target_len as f32;
-        for i in 0..target_len {
-            let idx = ((i as f32 * step) as usize).min(samples.len() - 1);
-            self.samples.push(samples[idx]);
-        }
-    }
+    /// Kept for API compatibility. The monochrome bar does not render a
+    /// waveform, so incoming audio samples are ignored.
+    pub fn set_waveform_samples(&mut self, _samples: &[f32]) {}
 
     pub fn set_text(&mut self, text: impl Into<String>) {
         self.text = Some(text.into());
@@ -96,29 +77,19 @@ impl Renderer {
         let mut pixmap = Pixmap::new(self.width, self.height)
             .unwrap_or_else(|| Pixmap::new(1, 1).unwrap());
 
-        // Smooth the waveform samples.
-        let attack = 0.25;
-        let decay = 0.10;
-        for i in 0..self.smoothed.len() {
-            let target = self.samples.get(i).copied().unwrap_or(0.0);
-            let delta = target - self.smoothed[i];
-            self.smoothed[i] += delta * if delta > 0.0 { attack } else { decay };
-        }
-
-        let elapsed = self.start.elapsed().as_secs_f32();
         let w = self.width as f32;
         let h = self.height as f32;
         let r = h / 2.0;
 
         let capsule = rounded_capsule(0.0, 0.0, w, h, r);
 
-        // Capsule fill.
+        // Near-black fill.
         let mut fill_paint = Paint::default();
-        fill_paint.set_color_rgba8(24, 24, 27, 232);
+        fill_paint.set_color_rgba8(10, 10, 10, 245);
         fill_paint.anti_alias = true;
         pixmap.fill_path(&capsule, &fill_paint, FillRule::Winding, Transform::identity(), None);
 
-        // Hairline border.
+        // Subtle white hairline border.
         let mut border_paint = Paint::default();
         border_paint.set_color_rgba8(255, 255, 255, 22);
         border_paint.anti_alias = true;
@@ -126,194 +97,28 @@ impl Renderer {
         border_stroke.width = 1.0;
         pixmap.stroke_path(&capsule, &border_paint, &border_stroke, Transform::identity(), None);
 
-        // State dot.
-        draw_state_dot(&mut pixmap, self.state, elapsed, 16.0, h / 2.0);
-
-        // Decide layout: if we're showing final text, let it breathe on the
-        // right side; otherwise the waveform owns that space.
+        // Text is the entire UI. Center it in the bar.
         let text = self.text.as_deref().unwrap_or("");
-        let has_text = !text.is_empty();
-        let wave_x0 = 34.0;
-        let mut wave_x1 = w - 16.0;
-        let mut text_x = 34.0;
-
-        if has_text && self.state == OverlayState::Done {
-            // No waveform in the final "done" state; text spans the capsule.
-            wave_x1 = wave_x0;
-        } else if has_text {
-            // Reserve up to 160px for text; waveform gets the rest.
-            let reserved_text = (w - 44.0).min(160.0);
-            wave_x1 = (w - 16.0 - reserved_text).max(wave_x0 + 60.0);
-            text_x = wave_x1 + 10.0;
-        }
-
-        if wave_x1 > wave_x0 + 2.0 {
-            draw_waveform(&mut pixmap, &self.smoothed, self.state, wave_x0, wave_x1, h);
-        }
-
-        if has_text {
-            let max_text_w = (w - text_x - 14.0) as i32;
+        if let Some(font) = &self.font {
+            let px = 14.0;
+            let text_width = measure_text_width(font, text, px);
+            let text_x = ((w - text_width) / 2.0).max(12.0);
+            let max_text_w = (w - text_x - 12.0) as i32;
             draw_text_rgba(
                 pixmap.data_mut(),
                 self.width,
                 self.height,
                 text_x as i32,
-                self.height as i32 / 2,
+                (h / 2.0) as i32,
                 text,
-                17.0,
+                px,
                 max_text_w,
-                &self.font,
+                font,
             );
         }
 
         pixmap_to_rgba(&pixmap)
     }
-}
-
-fn draw_state_dot(pixmap: &mut Pixmap, state: OverlayState, elapsed: f32, cx: f32, cy: f32) {
-    let (r, g, b) = match state {
-        OverlayState::Listening => (239, 68, 68),   // red-500
-        OverlayState::Processing => (245, 158, 11), // amber-500
-        OverlayState::Done => (34, 197, 94),        // green-500
-        OverlayState::Error => (239, 68, 68),
-    };
-
-    let base_alpha: u8 = if state == OverlayState::Listening {
-        // Gentle pulse.
-        let pulse = (elapsed * 2.5).sin() * 15.0 + 200.0;
-        pulse as u8
-    } else {
-        220
-    };
-
-    let radius = 4.5;
-
-    // Soft outer ring using a tiny radial gradient.
-    let ring = tiny_skia::RadialGradient::new(
-        Point::from_xy(cx, cy),
-        0.0,
-        Point::from_xy(cx, cy),
-        radius + 3.0,
-        vec![
-            GradientStop::new(0.0, Color::from_rgba8(r, g, b, (base_alpha as f32 * 0.35) as u8)),
-            GradientStop::new(1.0, Color::from_rgba8(r, g, b, 0)),
-        ],
-        SpreadMode::Pad,
-        Transform::identity(),
-    )
-    .unwrap();
-    let ring_path = {
-        let mut pb = PathBuilder::new();
-        pb.push_circle(cx, cy, radius + 3.0);
-        pb.finish().unwrap()
-    };
-    let mut ring_paint = Paint::default();
-    ring_paint.shader = ring;
-    ring_paint.anti_alias = true;
-    pixmap.fill_path(&ring_path, &ring_paint, FillRule::Winding, Transform::identity(), None);
-
-    // Solid core.
-    let core_path = {
-        let mut pb = PathBuilder::new();
-        pb.push_circle(cx, cy, radius);
-        pb.finish().unwrap()
-    };
-    let mut core_paint = Paint::default();
-    core_paint.set_color_rgba8(r, g, b, base_alpha);
-    core_paint.anti_alias = true;
-    pixmap.fill_path(&core_path, &core_paint, FillRule::Winding, Transform::identity(), None);
-}
-
-fn draw_waveform(
-    pixmap: &mut Pixmap,
-    samples: &[f32],
-    state: OverlayState,
-    x0: f32,
-    x1: f32,
-    height: f32,
-) {
-    if samples.len() < 2 {
-        return;
-    }
-
-    let center = height / 2.0;
-    let max_amp = (height / 2.0) - 10.0;
-
-    let rms = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
-    let gain = if rms > 0.001 {
-        max_amp / (rms * 8.0).max(0.2)
-    } else {
-        max_amp * 2.0
-    };
-
-    let points: Vec<(f32, f32)> = samples
-        .iter()
-        .enumerate()
-        .map(|(i, &s)| {
-            let t = i as f32 / (samples.len() - 1) as f32;
-            let x = x0 + t * (x1 - x0);
-            let y = center - (s * gain).clamp(-max_amp, max_amp);
-            (x, y)
-        })
-        .collect();
-
-    let path = smooth_path(&points);
-
-    let (r, g, b) = match state {
-        OverlayState::Listening => (165, 180, 252), // indigo-300
-        OverlayState::Processing => (251, 191, 36), // amber-300
-        _ => (156, 163, 175),                       // gray-400
-    };
-
-    // Subtle shadow stroke for depth.
-    let mut shadow_stroke = Stroke::default();
-    shadow_stroke.width = 3.0;
-    shadow_stroke.line_cap = LineCap::Round;
-    shadow_stroke.line_join = LineJoin::Round;
-    let mut shadow_paint = Paint::default();
-    shadow_paint.set_color_rgba8(0, 0, 0, 50);
-    shadow_paint.anti_alias = true;
-    pixmap.stroke_path(&path, &shadow_paint, &shadow_stroke, Transform::identity(), None);
-
-    // Accent stroke.
-    let mut stroke = Stroke::default();
-    stroke.width = 1.5;
-    stroke.line_cap = LineCap::Round;
-    stroke.line_join = LineJoin::Round;
-    let mut paint = Paint::default();
-    paint.set_color_rgba8(r, g, b, 230);
-    paint.anti_alias = true;
-    pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
-}
-
-/// Build a smooth path through points using cubic Bézier interpolation.
-fn smooth_path(points: &[(f32, f32)]) -> tiny_skia::Path {
-    if points.len() < 2 {
-        let mut pb = PathBuilder::new();
-        if let Some(&(x, y)) = points.first() {
-            pb.move_to(x, y);
-        }
-        return pb.finish().unwrap_or_else(|| {
-            let mut pb = PathBuilder::new();
-            pb.move_to(0.0, 0.0);
-            pb.finish().unwrap()
-        });
-    }
-
-    let mut pb = PathBuilder::new();
-    pb.move_to(points[0].0, points[0].1);
-
-    for i in 0..points.len() - 1 {
-        let p0 = points[i];
-        let p1 = points[i + 1];
-        let dx = p1.0 - p0.0;
-        let cp1x = p0.0 + dx * 0.5;
-        let cp1y = p0.1;
-        let cp2x = p1.0 - dx * 0.5;
-        let cp2y = p1.1;
-        pb.cubic_to(cp1x, cp1y, cp2x, cp2y, p1.0, p1.1);
-    }
-    pb.finish().unwrap()
 }
 
 fn rounded_capsule(x: f32, y: f32, w: f32, h: f32, r: f32) -> tiny_skia::Path {
@@ -353,6 +158,20 @@ fn pixmap_to_rgba(pixmap: &Pixmap) -> Vec<u8> {
     out
 }
 
+fn measure_text_width(font: &fontdue::Font, text: &str, px: f32) -> f32 {
+    let mut width = 0.0;
+    let mut prev: Option<char> = None;
+    for ch in text.chars() {
+        if let Some(k) = prev.and_then(|p| font.horizontal_kern(p, ch, px)) {
+            width += k;
+        }
+        let (metrics, _) = font.rasterize(ch, px);
+        width += metrics.advance_width;
+        prev = Some(ch);
+    }
+    width
+}
+
 fn draw_text_rgba(
     buffer: &mut [u8],
     width: u32,
@@ -362,30 +181,26 @@ fn draw_text_rgba(
     text: &str,
     px: f32,
     max_width: i32,
-    font: &Option<fontdue::Font>,
+    font: &fontdue::Font,
 ) {
-    let Some(font) = font else { return };
-
-    // Render text at 2× resolution then downsample. fontdue produces the best
-    // possible unhinted outlines, but at small sizes a 2× supersample mask
-    // trades a tiny amount of CPU for noticeably cleaner strokes.
+    // Render text at 2× resolution then downsample for cleaner strokes.
     let scale = 2.0;
     let px2 = px * scale;
     let width2 = width as usize * scale as usize;
     let height2 = height as usize * scale as usize;
 
-    let (ascent, descent) = font
+    let ascent = font
         .horizontal_line_metrics(px2)
-        .map(|m| (m.ascent, m.descent))
-        .unwrap_or((px2 * 0.75, -px2 * 0.25));
-    let baseline2 = ((height as f32 * scale + ascent - descent) / 2.0) as i32;
+        .map(|m| m.ascent)
+        .unwrap_or(px2 * 0.75);
+    // Center the cap height in the capsule.
+    let baseline2 = ((height as f32 * scale + ascent) / 2.0 - 4.0) as i32;
 
     let mut cursor_x = x as f32;
     let mut prev: Option<char> = None;
     let ellipsis = '…';
     let mut chars_to_draw: Vec<char> = Vec::new();
 
-    // Layout is measured at target resolution so the ellipsis math is correct.
     for ch in text.chars() {
         let (metrics, _) = font.rasterize(ch, px);
         let advance = metrics.advance_width;
@@ -421,13 +236,12 @@ fn draw_text_rgba(
             &bitmap,
             metrics.width,
             metrics.height,
-            0.92,
+            0.95,
         );
         cursor_x += metrics.advance_width;
         prev = Some(*ch);
     }
 
-    // Composite the 2× mask down to the final buffer.
     for ty in 0..height {
         for tx in 0..width {
             let sx = tx as usize * scale as usize;
@@ -443,9 +257,9 @@ fn draw_text_rgba(
             let alpha = a as f32 / 255.0;
             let idx = ((ty as u32 * width + tx as u32) * 4) as usize;
             let inv = 1.0 - alpha;
-            buffer[idx] = (243.0 * alpha + buffer[idx] as f32 * inv) as u8;
-            buffer[idx + 1] = (244.0 * alpha + buffer[idx + 1] as f32 * inv) as u8;
-            buffer[idx + 2] = (246.0 * alpha + buffer[idx + 2] as f32 * inv) as u8;
+            buffer[idx] = (255.0 * alpha + buffer[idx] as f32 * inv) as u8;
+            buffer[idx + 1] = (255.0 * alpha + buffer[idx + 1] as f32 * inv) as u8;
+            buffer[idx + 2] = (255.0 * alpha + buffer[idx + 2] as f32 * inv) as u8;
             let old_a = buffer[idx + 3] as f32 / 255.0;
             let new_a = alpha + old_a * inv;
             buffer[idx + 3] = (new_a * 255.0) as u8;
@@ -473,7 +287,6 @@ fn blit_glyph_mask(
             }
             let alpha = (bitmap[row * w + col] as f32 * alpha_mul) as u8;
             let idx = (py as u32 * width + px as u32) as usize;
-            // Glyphs rarely overlap, but a max keeps the mask physically plausible.
             if alpha > mask[idx] {
                 mask[idx] = alpha;
             }
@@ -522,7 +335,7 @@ fn load_font() -> Option<fontdue::Font> {
     None
 }
 
-/// Resample recent audio samples into a fixed-length waveform buffer.
+/// Kept for API compatibility with the audio preview path.
 pub fn waveform_from_samples(samples: &[f32], target_len: usize) -> Vec<f32> {
     if samples.is_empty() || target_len == 0 {
         return vec![0.0; target_len];

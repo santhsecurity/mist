@@ -6,7 +6,7 @@ Push-to-talk → transcribe → type. No cloud. No clipboard. Just your voice at
 
 ## Screenshots
 
-The overlay follows your cursor and shows the real waveform plus the live / final text.
+The overlay follows your cursor and shows a sleek monochrome status bar with the live / final text.
 
 | Listening | Processing | Done |
 |---|---|---|
@@ -20,8 +20,8 @@ You can regenerate these with `mist screenshot`.
 - **Direct typing** — Text appears at your cursor, no clipboard pollution
 - **Cross-platform** — Linux (X11/Wayland), macOS, Windows
 - **Hold-to-talk** — Hold hotkey to record, release to transcribe and type
-- **Cursor-following overlay** — A minimal, real-time waveform and live text preview appears near your cursor while you speak
-- **Premium rendering** — Anti-aliased capsule, hairline border, smooth waveform, system typography
+- **Cursor-following overlay** — A minimal, monochrome status bar appears near your cursor while you speak
+- **Premium rendering** — Sleek black pill, hairline border, system typography
 - **Modular cleanup** — `fast` (default), `candle`, `ollama`, `command`, or `none`
 - **Vocabulary correction** — Fuzzy post-STT correction dictionary for domain terms
 - **Phrase replacements** — Expand shortcuts like "my email" → `you@example.com`

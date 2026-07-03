@@ -387,7 +387,7 @@ fn run_daemon() -> Result<()> {
                                         if config.show_overlay {
                                             overlay.show_near_cursor();
                                             overlay.set_state(overlay::OverlayState::Listening);
-                                            overlay.set_text("");
+                                            overlay.set_text("LISTENING");
                                         }
                                     }
                                 }
@@ -508,38 +508,20 @@ fn generate_screenshots(output: Option<std::path::PathBuf>) -> Result<()> {
     let dir = output.unwrap_or_else(|| std::path::PathBuf::from("assets/screenshots"));
     std::fs::create_dir_all(&dir)?;
 
-    let mut renderer = overlay::Renderer::new(360, 48);
+    let mut renderer = overlay::Renderer::new(280, 32);
 
-    // Listening: active waveform.
+    // Listening.
     renderer.set_state(overlay::OverlayState::Listening);
-    let wave: Vec<f32> = (0..200)
-        .map(|i| {
-            let t = i as f32;
-            let envelope = (t / 30.0).sin() * 0.45 + 0.55;
-            ((t / 3.0).sin() + 0.5 * (t / 7.0).sin() + 0.25 * (t / 13.0).sin())
-                * envelope
-                * 0.55
-        })
-        .collect();
-    renderer.set_waveform_samples(&wave);
-    renderer.clear_text();
+    renderer.set_text("LISTENING");
     save_overlay_png(&mut renderer, &dir.join("listening.png"))?;
 
-    // Processing: low activity with status text.
+    // Processing.
     renderer.set_state(overlay::OverlayState::Processing);
-    let wave: Vec<f32> = (0..200)
-        .map(|i| {
-            let t = i as f32;
-            (t / 6.0).sin() * 0.08 * ((t / 25.0).sin() * 0.5 + 0.5)
-        })
-        .collect();
-    renderer.set_waveform_samples(&wave);
-    renderer.set_text("Working…");
+    renderer.set_text("PROCESSING");
     save_overlay_png(&mut renderer, &dir.join("processing.png"))?;
 
     // Done: final transcribed text.
     renderer.set_state(overlay::OverlayState::Done);
-    renderer.set_waveform_samples(&[]);
     renderer.set_text("Deploy to Kubernetes.");
     save_overlay_png(&mut renderer, &dir.join("done.png"))?;
 
@@ -682,7 +664,7 @@ fn stop_recording(
                 }
                 if config.show_overlay {
                     overlay.set_state(overlay::OverlayState::Processing);
-                    overlay.set_text("");
+                    overlay.set_text("PROCESSING");
                 }
                 let _ = stt_tx.send(Job::Final(samples));
             }

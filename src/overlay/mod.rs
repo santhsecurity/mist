@@ -32,8 +32,8 @@ fn leak_window_and_context(window: Window) -> Result<Leaked> {
 
 impl Overlay {
     pub fn new(event_loop: &EventLoop<()>) -> Result<Self> {
-        let width = 360;
-        let height = 48;
+        let width = 320;
+        let height = 36;
         let window = WindowBuilder::new()
             .with_decorations(false)
             .with_always_on_top(true)
