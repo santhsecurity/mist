@@ -56,9 +56,7 @@ pub fn apply(text: &str, config: &Config) -> String {
                         continue;
                     }
                     let sim = jaro_winkler(&lower, pattern);
-                    if sim >= 0.88
-                        && (best_match.is_none() || sim > best_match.unwrap().1)
-                    {
+                    if sim >= 0.88 && (best_match.is_none() || sim > best_match.unwrap().1) {
                         best_match = Some((correct.as_str(), sim));
                     }
                 }
@@ -96,7 +94,10 @@ mod tests {
             patterns: vec!["kubernetes".to_string(), "kuber netties".to_string()],
             correct: "Kubernetes".to_string(),
         }]);
-        assert_eq!(apply("I use kubernetes daily", &config), "I use Kubernetes daily");
+        assert_eq!(
+            apply("I use kubernetes daily", &config),
+            "I use Kubernetes daily"
+        );
     }
 
     #[test]
@@ -106,7 +107,10 @@ mod tests {
             correct: "Kubernetes".to_string(),
         }]);
         // "kuberntes" is a common Whisper misrecognition.
-        assert_eq!(apply("deploy to kuberntes", &config), "deploy to Kubernetes");
+        assert_eq!(
+            apply("deploy to kuberntes", &config),
+            "deploy to Kubernetes"
+        );
     }
 
     #[test]

@@ -44,6 +44,8 @@ pub struct Config {
     pub n_threads: u32,
     #[serde(default)]
     pub corrections: Vec<CorrectionEntry>,
+    #[serde(default)]
+    pub replacements: Vec<ReplacementEntry>,
 }
 
 /// A vocabulary correction entry: a list of patterns that should all map to one
@@ -52,6 +54,22 @@ pub struct Config {
 pub struct CorrectionEntry {
     pub patterns: Vec<String>,
     pub correct: String,
+}
+
+/// A phrase replacement entry: a pattern (substring or whole phrase) and its
+/// replacement.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ReplacementEntry {
+    pub pattern: String,
+    pub replacement: String,
+}
+
+/// Per-project dictionary loaded from `.mist-dictionary.toml`.
+#[derive(Debug, Default, Clone)]
+pub struct ProjectVocab {
+    pub terms: Vec<String>,
+    pub corrections: Vec<CorrectionEntry>,
+    pub replacements: Vec<ReplacementEntry>,
 }
 
 fn default_hotkey() -> String {
@@ -124,6 +142,7 @@ impl Default for Config {
             max_recording_secs: default_max_recording_secs(),
             n_threads: default_n_threads(),
             corrections: Vec::new(),
+            replacements: Vec::new(),
         }
     }
 }
@@ -155,36 +174,44 @@ impl Config {
     }
 
     pub fn path() -> Result<PathBuf> {
-        let dirs = ProjectDirs::from("", "", "flow")
+        let dirs = ProjectDirs::from("", "", "mist")
             .ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
         Ok(dirs.config_dir().join("config.toml"))
     }
 
     pub fn model_path(&self) -> Result<PathBuf> {
-        let dirs = ProjectDirs::from("", "", "flow")
+        let dirs = ProjectDirs::from("", "", "mist")
             .ok_or_else(|| anyhow::anyhow!("Could not find data directory"))?;
         Ok(dirs.data_dir().join(format!("ggml-{}.bin", self.model)))
     }
 
     /// Try to load a per-project dictionary from the current working directory.
-    /// Looks for `.flow-dictionary.toml` in the cwd and parent directories
-    /// (up to 5 levels). Returns terms that should be appended to the global
-    /// dictionary.
-    pub fn project_dictionary() -> Vec<String> {
+    /// Looks for `.mist-dictionary.toml` in the cwd and parent directories
+    /// (up to 5 levels). Returns terms, corrections, and replacements that
+    /// should be merged with the global config.
+    pub fn project_vocab() -> ProjectVocab {
         let Ok(mut dir) = std::env::current_dir() else {
-            return Vec::new();
+            return ProjectVocab::default();
         };
         for _ in 0..5 {
-            let candidate = dir.join(".flow-dictionary.toml");
+            let candidate = dir.join(".mist-dictionary.toml");
             if candidate.is_file() {
                 if let Ok(content) = fs::read_to_string(&candidate) {
                     #[derive(Deserialize)]
                     struct ProjectDict {
                         #[serde(default)]
                         terms: Vec<String>,
+                        #[serde(default)]
+                        corrections: Vec<CorrectionEntry>,
+                        #[serde(default)]
+                        replacements: Vec<ReplacementEntry>,
                     }
                     if let Ok(pd) = toml::from_str::<ProjectDict>(&content) {
-                        return pd.terms;
+                        return ProjectVocab {
+                            terms: pd.terms,
+                            corrections: pd.corrections,
+                            replacements: pd.replacements,
+                        };
                     }
                 }
             }
@@ -192,7 +219,7 @@ impl Config {
                 break;
             }
         }
-        Vec::new()
+        ProjectVocab::default()
     }
 
     /// Emit warnings for any TOML keys that are not recognised config fields.
@@ -213,6 +240,7 @@ impl Config {
             "max_recording_secs",
             "n_threads",
             "corrections",
+            "replacements",
         ];
 
         // Quick parse to get top-level keys.
@@ -234,8 +262,8 @@ impl Config {
     /// any per-project terms.
     pub fn effective_dictionary(&self) -> Vec<String> {
         let mut dict = self.dictionary.clone();
-        let project_terms = Self::project_dictionary();
-        for term in project_terms {
+        let project = Self::project_vocab();
+        for term in project.terms {
             if !dict.contains(&term) {
                 dict.push(term);
             }
@@ -243,10 +271,28 @@ impl Config {
         dict
     }
 
+    /// Build the effective corrections by merging global and per-project
+    /// correction entries.
+    pub fn effective_corrections(&self) -> Vec<CorrectionEntry> {
+        let mut corrections = self.corrections.clone();
+        let project = Self::project_vocab();
+        corrections.extend(project.corrections);
+        corrections
+    }
+
+    /// Build the effective replacements by merging global and per-project
+    /// replacement entries.
+    pub fn effective_replacements(&self) -> Vec<ReplacementEntry> {
+        let mut replacements = self.replacements.clone();
+        let project = Self::project_vocab();
+        replacements.extend(project.replacements);
+        replacements
+    }
+
     /// Build a HashMap from lowercased pattern → canonical correction.
     pub fn correction_map(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
-        for entry in &self.corrections {
+        for entry in self.effective_corrections() {
             for pattern in &entry.patterns {
                 map.insert(pattern.to_lowercase(), entry.correct.clone());
             }
@@ -254,15 +300,83 @@ impl Config {
         map
     }
 
+    /// Add a word to the global dictionary if it is not already present.
+    pub fn add_dictionary_word(&mut self, word: &str) -> bool {
+        if word.is_empty() || self.dictionary.contains(&word.to_string()) {
+            return false;
+        }
+        self.dictionary.push(word.to_string());
+        true
+    }
+
+    /// Remove a word from the global dictionary.
+    pub fn remove_dictionary_word(&mut self, word: &str) -> bool {
+        if let Some(pos) = self.dictionary.iter().position(|w| w == word) {
+            self.dictionary.remove(pos);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Export dictionary fields to a TOML file.
+    pub fn export_dictionary(&self, path: &std::path::Path) -> Result<()> {
+        #[derive(Serialize)]
+        struct DictFile<'a> {
+            terms: &'a [String],
+            corrections: &'a [CorrectionEntry],
+            replacements: &'a [ReplacementEntry],
+        }
+        let file = DictFile {
+            terms: &self.dictionary,
+            corrections: &self.corrections,
+            replacements: &self.replacements,
+        };
+        std::fs::write(path, toml::to_string_pretty(&file)?)?;
+        Ok(())
+    }
+
+    /// Import dictionary fields from a TOML file and merge them into the
+    /// global config.
+    pub fn import_dictionary(&mut self, path: &std::path::Path) -> Result<()> {
+        let content = std::fs::read_to_string(path)?;
+        #[derive(Deserialize)]
+        struct DictFile {
+            #[serde(default)]
+            terms: Vec<String>,
+            #[serde(default)]
+            corrections: Vec<CorrectionEntry>,
+            #[serde(default)]
+            replacements: Vec<ReplacementEntry>,
+        }
+        let file: DictFile = toml::from_str(&content)?;
+        for term in file.terms {
+            if !self.dictionary.contains(&term) {
+                self.dictionary.push(term);
+            }
+        }
+        self.corrections.extend(file.corrections);
+        self.replacements.extend(file.replacements);
+        Ok(())
+    }
+
     pub fn setup_interactive() -> Result<()> {
         use dialoguer::{Confirm, Input, Select};
 
         let mut config = Config::load().unwrap_or_default();
 
-        println!("\n━━━ Flow Setup ━━━\n");
+        println!("\n━━━ Mist Setup ━━━\n");
 
         // Model
-        let models = vec!["tiny.en", "base.en", "small.en", "medium.en"];
+        let models = vec![
+            "tiny.en",
+            "base.en",
+            "small.en",
+            "small.en-q5_0",
+            "medium.en",
+            "medium.en-q5_0",
+            "large-v3-turbo-q5_0",
+        ];
         let default = models.iter().position(|m| *m == config.model).unwrap_or(2);
         let idx = Select::new()
             .with_prompt("Whisper model")
@@ -343,9 +457,7 @@ impl Config {
                 .interact()?;
             match idx {
                 0 => {
-                    let word: String = Input::new()
-                        .with_prompt("Word to add")
-                        .interact_text()?;
+                    let word: String = Input::new().with_prompt("Word to add").interact_text()?;
                     if !word.is_empty() && !config.dictionary.contains(&word) {
                         config.dictionary.push(word);
                     }

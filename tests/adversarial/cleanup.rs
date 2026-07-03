@@ -1,7 +1,7 @@
 mod helpers;
 
-use flow::cleanup::cleanup;
-use flow::config::Config;
+use mist::cleanup::cleanup;
+use mist::config::Config;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::thread;

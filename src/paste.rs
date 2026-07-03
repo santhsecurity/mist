@@ -12,11 +12,24 @@ enum LinuxTypingBackend {
     Ydotool,
 }
 
+/// Returns whether a typing backend is available on this platform.
+pub fn typing_backend_available() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        detect_linux_backend().is_some()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        // macOS and Windows use enigo, which is compiled in.
+        true
+    }
+}
+
 /// The detected typing backend on Linux, cached for the process lifetime.
 ///
 /// Detection runs once on first paste. If no typing tool is installed at
 /// startup, the `None` result is cached permanently — installing xdotool
-/// later won't take effect until Flow is restarted. This is intentional for
+/// later won't take effect until Mist is restarted. This is intentional for
 /// a daemon: the environment shouldn't change under a running process.
 #[cfg(target_os = "linux")]
 static LINUX_BACKEND: OnceLock<Option<LinuxTypingBackend>> = OnceLock::new();
@@ -25,8 +38,7 @@ static LINUX_BACKEND: OnceLock<Option<LinuxTypingBackend>> = OnceLock::new();
 #[cfg(target_os = "linux")]
 fn detect_linux_backend() -> Option<LinuxTypingBackend> {
     let session_type = std::env::var("XDG_SESSION_TYPE").unwrap_or_default();
-    let wayland = session_type == "wayland"
-        || std::env::var("WAYLAND_DISPLAY").is_ok();
+    let wayland = session_type == "wayland" || std::env::var("WAYLAND_DISPLAY").is_ok();
 
     // On Wayland, prefer wtype → ydotool; skip xdotool (it doesn't work).
     // On X11, prefer xdotool → ydotool → wtype.
@@ -108,9 +120,7 @@ fn type_linux(text: &str) -> Result<()> {
             anyhow::bail!("xdotool exited with status {}", status);
         }
         Some(LinuxTypingBackend::Wtype) => {
-            let status = std::process::Command::new("wtype")
-                .arg(text)
-                .status()?;
+            let status = std::process::Command::new("wtype").arg(text).status()?;
             if status.success() {
                 return Ok(());
             }
@@ -126,7 +136,8 @@ fn type_linux(text: &str) -> Result<()> {
             anyhow::bail!("ydotool exited with status {}", status);
         }
         None => {
-            let session_type = std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| "unknown".into());
+            let session_type =
+                std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| "unknown".into());
             anyhow::bail!(
                 "No typing tool available for {} session. \
                  Install xdotool (X11), wtype (Wayland), or ydotool (either).",

@@ -4,15 +4,29 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState};
+use whisper_rs::{
+    FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState,
+};
 
 /// Known SHA-256 checksums for official ggml Whisper models from HuggingFace.
 /// If the model is not in this list (custom download), we skip verification.
 const MODEL_CHECKSUMS: &[(&str, &str)] = &[
-    ("ggml-tiny.en", "c78c86eb1a8faa21b369bcd33207cc90d64ae9df52aa5a0529ca2f58affd8963"),
-    ("ggml-base.en", "a03779c86df3323075f5e796cb2ce5029f00b8046c9c5e16b0be2e11d047032c"),
-    ("ggml-small.en", "c6138e41004e7fa55e25f58a4e8a1c4a45ed9b5c89d50dea04b1eea0c1503e6b"),
-    ("ggml-medium.en", "19e4548ef1c1b5074c4b06e2f5917c88d59a0b96b1148fd4e7e1e0a62e18cc3c"),
+    (
+        "ggml-tiny.en",
+        "c78c86eb1a8faa21b369bcd33207cc90d64ae9df52aa5a0529ca2f58affd8963",
+    ),
+    (
+        "ggml-base.en",
+        "a03779c86df3323075f5e796cb2ce5029f00b8046c9c5e16b0be2e11d047032c",
+    ),
+    (
+        "ggml-small.en",
+        "c6138e41004e7fa55e25f58a4e8a1c4a45ed9b5c89d50dea04b1eea0c1503e6b",
+    ),
+    (
+        "ggml-medium.en",
+        "19e4548ef1c1b5074c4b06e2f5917c88d59a0b96b1148fd4e7e1e0a62e18cc3c",
+    ),
 ];
 
 pub struct SttEngine {
@@ -111,17 +125,17 @@ impl SttEngine {
 fn format_dictionary_prompt(terms: &[String]) -> String {
     match terms.len() {
         0 => String::new(),
-        1 => format!(
-            "This dictation may include the term {}.",
-            terms[0]
-        ),
+        1 => format!("This dictation may include the term {}.", terms[0]),
         2 => format!(
             "This dictation may include terms like {} and {}.",
             terms[0], terms[1]
         ),
         _ => {
             let last = &terms[terms.len() - 1];
-            let rest: Vec<&str> = terms[..terms.len() - 1].iter().map(|s| s.as_str()).collect();
+            let rest: Vec<&str> = terms[..terms.len() - 1]
+                .iter()
+                .map(|s| s.as_str())
+                .collect();
             format!(
                 "This dictation may include terms like {}, and {}.",
                 rest.join(", "),

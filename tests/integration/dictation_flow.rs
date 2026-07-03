@@ -1,10 +1,10 @@
 mod helpers;
 
-use flow::audio::AudioRecorder;
-use flow::cleanup::cleanup;
-use flow::config::Config;
-use flow::hotkey::parse_hotkey;
-use flow::stt::SttEngine;
+use mist::audio::AudioRecorder;
+use mist::cleanup::cleanup;
+use mist::config::Config;
+use mist::hotkey::parse_hotkey;
+use mist::stt::SttEngine;
 
 /// Test the full conceptual flow: create config → parse hotkey → create audio recorder
 /// (if possible) → generate synthetic audio → verify cleanup chains together.
@@ -26,6 +26,7 @@ fn test_full_conceptual_flow() {
         max_recording_secs: 120,
         n_threads: 4,
         corrections: Vec::new(),
+        replacements: Vec::new(),
     };
 
     // Config → hotkey parses correctly
@@ -33,7 +34,8 @@ fn test_full_conceptual_flow() {
     assert!(hotkey.is_ok(), "hotkey from config should parse");
 
     // AudioRecorder can be instantiated
-    let mut recorder = AudioRecorder::new(config.max_recording_secs).expect("AudioRecorder should instantiate");
+    let mut recorder =
+        AudioRecorder::new(config.max_recording_secs).expect("AudioRecorder should instantiate");
 
     // Try to start recording; skip if no device is present
     if let Err(e) = recorder.start() {
@@ -44,7 +46,10 @@ fn test_full_conceptual_flow() {
 
     // Synthetic audio stands in for captured microphone data
     let samples = helpers::synthetic_audio(16000, 1.0);
-    assert!(!samples.is_empty(), "synthetic audio should produce samples");
+    assert!(
+        !samples.is_empty(),
+        "synthetic audio should produce samples"
+    );
 
     // Cleanup is callable through the config backend
     let cleaned = cleanup(" um hello world uh ", &config).expect("cleanup should succeed");
@@ -57,7 +62,10 @@ fn test_config_hotkey_integration() {
     let toml_str = helpers::config_toml("Alt+Shift+D", "small.en", "fast");
     let config: Config = toml::from_str(&toml_str).expect("config should parse from TOML");
     let hotkey = parse_hotkey(&config.hotkey);
-    assert!(hotkey.is_ok(), "hotkey loaded from config TOML should parse");
+    assert!(
+        hotkey.is_ok(),
+        "hotkey loaded from config TOML should parse"
+    );
 }
 
 /// Config + cleanup integration: setting backend to "fast" makes cleanup callable.

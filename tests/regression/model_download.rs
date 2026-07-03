@@ -1,7 +1,7 @@
 //! Regression tests for model path handling in the STT engine.
 
-use flow::config::Config;
-use flow::stt::SttEngine;
+use mist::config::Config;
+use mist::stt::SttEngine;
 
 /// `SttEngine::new` with a non-existent model path must return an error,
 /// never panic. The implementation attempts to download the missing model;
@@ -20,7 +20,7 @@ fn test_stt_new_nonexistent_model_returns_error_not_panic() {
     );
 }
 
-/// `Config::model_path` must place the model inside the correct `flow` data
+/// `Config::model_path` must place the model inside the correct `mist` data
 /// directory and use the `ggml-{model}.bin` naming convention.
 #[test]
 fn test_model_path_resolution_directory_structure() {
@@ -39,8 +39,8 @@ fn test_model_path_resolution_directory_structure() {
 
     let path_str = path.to_string_lossy();
     assert!(
-        path_str.contains("flow"),
-        "Model path should be inside the flow data directory: {}",
+        path_str.contains("mist"),
+        "Model path should be inside the mist data directory: {}",
         path_str
     );
 }

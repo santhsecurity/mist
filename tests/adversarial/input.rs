@@ -1,12 +1,12 @@
-use flow::config::Config;
-use flow::hotkey::parse_hotkey;
+use mist::config::Config;
+use mist::hotkey::parse_hotkey;
 
 fn fast_cleanup(text: &str) -> anyhow::Result<String> {
     let cfg = Config {
         cleanup_backend: "fast".to_string(),
         ..Config::default()
     };
-    flow::cleanup::cleanup(text, &cfg)
+    mist::cleanup::cleanup(text, &cfg)
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn paste_no_tool_available() {
     // With PATH neutered, paste should fail cleanly.
     let original_path = std::env::var_os("PATH");
     std::env::set_var("PATH", "/dev/null");
-    let result = flow::paste::paste_text("safe because no tool can run");
+    let result = mist::paste::paste_text("safe because no tool can run");
     assert!(result.is_err());
     if let Some(val) = original_path {
         std::env::set_var("PATH", val);

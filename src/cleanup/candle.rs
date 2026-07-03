@@ -1,10 +1,10 @@
 use crate::config::Config;
 use anyhow::Result;
-use log::info;
 use candle::quantized::gguf_file;
 use candle::{Device, Tensor};
 use candle_transformers::generation::{LogitsProcessor, Sampling};
 use candle_transformers::models::quantized_qwen2::ModelWeights as Qwen2;
+use log::info;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 use tokenizers::Tokenizer;
@@ -27,7 +27,11 @@ impl CandleEngine {
             .map_err(|e| anyhow::anyhow!("Failed to load model: {}", e))?;
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {}", e))?;
-        Ok(Self { model, tokenizer, device })
+        Ok(Self {
+            model,
+            tokenizer,
+            device,
+        })
     }
 
     fn generate(&mut self, prompt: &str, max_tokens: usize, temperature: f64) -> Result<String> {
@@ -94,14 +98,17 @@ pub fn cleanup(text: &str, config: &Config) -> Result<String> {
     }
     if !tokenizer_path.exists() {
         info!("Candle tokenizer not found. Downloading...");
-        download_verified(&tokenizer_path, TOKENIZER_URL, TOKENIZER_SHA256, "tokenizer")?;
+        download_verified(
+            &tokenizer_path,
+            TOKENIZER_URL,
+            TOKENIZER_SHA256,
+            "tokenizer",
+        )?;
     }
 
-    let engine = ENGINE.get_or_init(|| {
-        match CandleEngine::new(&model_path, &tokenizer_path) {
-            Ok(e) => Mutex::new(Ok(e)),
-            Err(e) => Mutex::new(Err(format!("Candle engine init failed: {}", e))),
-        }
+    let engine = ENGINE.get_or_init(|| match CandleEngine::new(&model_path, &tokenizer_path) {
+        Ok(e) => Mutex::new(Ok(e)),
+        Err(e) => Mutex::new(Err(format!("Candle engine init failed: {}", e))),
     });
 
     let mut guard = engine.lock().unwrap();
@@ -126,13 +133,13 @@ const MODEL_SHA256: Option<&str> = None;
 const TOKENIZER_SHA256: Option<&str> = None;
 
 fn model_path() -> Result<std::path::PathBuf> {
-    let dirs = directories::ProjectDirs::from("", "", "flow")
+    let dirs = directories::ProjectDirs::from("", "", "mist")
         .ok_or_else(|| anyhow::anyhow!("Could not find data directory"))?;
     Ok(dirs.data_dir().join("llm").join("model.gguf"))
 }
 
 fn tokenizer_path() -> Result<std::path::PathBuf> {
-    let dirs = directories::ProjectDirs::from("", "", "flow")
+    let dirs = directories::ProjectDirs::from("", "", "mist")
         .ok_or_else(|| anyhow::anyhow!("Could not find data directory"))?;
     Ok(dirs.data_dir().join("llm").join("tokenizer.json"))
 }
@@ -188,7 +195,11 @@ fn download_verified(
                     pct
                 );
             } else {
-                info!("  {} — {} MB downloaded...", label, downloaded / (1024 * 1024));
+                info!(
+                    "  {} — {} MB downloaded...",
+                    label,
+                    downloaded / (1024 * 1024)
+                );
             }
         }
     }

@@ -6,6 +6,7 @@ mod command;
 mod fast;
 mod none;
 mod ollama;
+mod replacements;
 
 pub mod corrections;
 
@@ -19,8 +20,15 @@ pub fn cleanup(text: &str, config: &Config) -> Result<String> {
     }?;
 
     // Apply vocabulary corrections after the main cleanup pass.
-    if !config.corrections.is_empty() {
+    if !config.effective_corrections().is_empty() {
         result = corrections::apply(&result, config);
+    }
+
+    // Apply phrase replacements last so shortcuts expand after everything
+    // else has normalized the text.
+    let replacements = config.effective_replacements();
+    if !replacements.is_empty() {
+        result = replacements::apply(&result, &replacements);
     }
 
     Ok(result)

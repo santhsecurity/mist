@@ -1,7 +1,7 @@
 [Desktop Entry]
-Name=Flow
+Name=Mist
 Comment=Local voice dictation daemon — push-to-talk, transcribe, type
-Exec=flow run
+Exec=mist run
 Type=Application
 Terminal=false
 Categories=Utility;Accessibility;Audio;

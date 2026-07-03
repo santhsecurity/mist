@@ -3,7 +3,7 @@
 //! `enigo` is declared only under `[target.'cfg(not(target_os = "linux"))'.dependencies]`,
 //! so the Linux paste implementation must use xdotool / wtype / ydotool.
 
-use flow::paste::paste_text;
+use mist::paste::paste_text;
 
 /// Verify that on Linux `paste_text` uses xdotool/wtype/ydotool, not enigo.
 /// If a typing tool is installed, paste succeeds (correct behavior).

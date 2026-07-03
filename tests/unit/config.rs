@@ -1,8 +1,8 @@
 mod helpers;
 
+use mist::config::Config;
 use std::sync::Mutex;
 use tempfile::tempdir;
-use flow::config::Config;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -18,7 +18,9 @@ fn test_default_config_values() {
     assert!(config.show_overlay);
     assert_eq!(config.ollama_model, "qwen3:0.6b");
     assert_eq!(config.ollama_url, "http://localhost:11434");
-    assert!(config.cleanup_prompt.contains("dictation cleanup assistant"));
+    assert!(config
+        .cleanup_prompt
+        .contains("dictation cleanup assistant"));
     assert!(config.dictionary.is_empty());
     assert_eq!(config.max_recording_secs, 120);
     assert!(config.n_threads > 0);
@@ -84,7 +86,7 @@ fn test_malformed_toml_returns_error_gracefully() {
     let original = std::env::var_os("XDG_CONFIG_HOME");
     std::env::set_var("XDG_CONFIG_HOME", temp.path());
 
-    let config_dir = temp.path().join("flow");
+    let config_dir = temp.path().join("mist");
     std::fs::create_dir_all(&config_dir).unwrap();
     std::fs::write(config_dir.join("config.toml"), "not valid toml <<<").unwrap();
 

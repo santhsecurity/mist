@@ -1,12 +1,12 @@
 [package]
-name = "flow"
+name = "mist"
 version = "0.2.0"
 edition = "2021"
 rust-version = "1.70"
 description = "Local-first voice dictation daemon"
-authors = ["Flow Contributors"]
+authors = ["Mist Contributors"]
 license = "MIT"
-repository = "https://github.com/santhsecurity/flow"
+repository = "https://github.com/santhsecurity/mist"
 keywords = ["voice", "dictation", "whisper", "stt", "accessibility"]
 categories = ["command-line-utilities", "multimedia::audio"]
 
@@ -15,6 +15,9 @@ default = []
 cuda = ["whisper-rs/cuda"]
 metal = ["whisper-rs/metal"]
 vulkan = ["whisper-rs/vulkan"]
+coreml = ["whisper-rs/coreml"]
+openblas = ["whisper-rs/openblas"]
+whisper-log = ["whisper-rs/log_backend"]
 
 [dependencies]
 anyhow = "1"
@@ -41,6 +44,10 @@ tokenizers = "0.22"
 toml = "0.8"
 ureq = "2"
 whisper-rs = "0.14"
+mouse_position = "0.1.4"
+fontdb = "0.23.0"
+fontdue = "0.9.3"
+image = { version = "0.25.6", default-features = false, features = ["png"] }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 enigo = "0.3"
@@ -66,11 +73,11 @@ name = "unit_cleanup"
 path = "tests/unit/cleanup.rs"
 
 [[test]]
-name = "integration_dictation_flow"
+name = "integration_dictation_mist"
 path = "tests/integration/dictation_flow.rs"
 
 [[test]]
-name = "integration_setup_flow"
+name = "integration_setup_mist"
 path = "tests/integration/setup_flow.rs"
 
 [[test]]

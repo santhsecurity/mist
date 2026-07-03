@@ -1,6 +1,6 @@
 mod helpers;
 
-use flow::config::Config;
+use mist::config::Config;
 use std::sync::Mutex;
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -16,7 +16,9 @@ fn test_default_config_created_and_saved() {
     std::env::set_var("XDG_CONFIG_HOME", tmp.path());
 
     let config = Config::default();
-    config.save().expect("default config should save without error");
+    config
+        .save()
+        .expect("default config should save without error");
 
     let path = Config::path().expect("config path should resolve");
     assert!(path.exists(), "saved config file should exist on disk");
@@ -56,6 +58,7 @@ fn test_config_roundtrips_through_toml() {
         max_recording_secs: 60,
         n_threads: 8,
         corrections: Vec::new(),
+        replacements: Vec::new(),
     };
 
     let toml = toml::to_string_pretty(&config).expect("config should serialize to TOML");

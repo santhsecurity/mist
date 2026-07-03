@@ -1,4 +1,4 @@
-use flow::{audio, cleanup, config, hotkey, overlay, paste, stt};
+use mist::{audio, cleanup, config, hotkey, overlay, paste, stt};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -15,7 +15,7 @@ use tao::event::{Event, StartCause};
 use tao::event_loop::ControlFlow;
 
 #[derive(Parser)]
-#[command(name = "flow", about = "Local voice dictation daemon", version = env!("CARGO_PKG_VERSION"))]
+#[command(name = "mist", about = "Local voice dictation daemon", version = env!("CARGO_PKG_VERSION"))]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -27,6 +27,33 @@ enum Commands {
     Run,
     /// Interactive configuration
     Setup,
+    /// Manage the global dictionary
+    Dictionary {
+        #[command(subcommand)]
+        action: DictAction,
+    },
+    /// Show daemon status and configuration
+    Status,
+    /// Generate overlay screenshots for documentation
+    Screenshot {
+        /// Output directory (default: assets/screenshots)
+        #[arg(short, long)]
+        output: Option<std::path::PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum DictAction {
+    /// Add a word to the global dictionary
+    Add { word: String },
+    /// Remove a word from the global dictionary
+    Remove { word: String },
+    /// List dictionary, corrections, and replacements
+    List,
+    /// Import a TOML dictionary file into the global config
+    Import { path: std::path::PathBuf },
+    /// Export the global dictionary to a TOML file
+    Export { path: std::path::PathBuf },
 }
 
 enum Job {
@@ -44,6 +71,9 @@ fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::Setup) => config::Config::setup_interactive(),
+        Some(Commands::Dictionary { action }) => handle_dictionary(action),
+        Some(Commands::Status) => show_status(),
+        Some(Commands::Screenshot { output }) => generate_screenshots(output),
         Some(Commands::Run) | None => run_daemon(),
     }
 }
@@ -56,8 +86,8 @@ fn init_logging() {
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(&val)).init();
     } else {
         // Default: log to file with rotation.
-        if let Some(dirs) = directories::ProjectDirs::from("", "", "flow") {
-            let log_path = dirs.data_dir().join("flow.log");
+        if let Some(dirs) = directories::ProjectDirs::from("", "", "mist") {
+            let log_path = dirs.data_dir().join("mist.log");
             let _ = std::fs::create_dir_all(dirs.data_dir());
 
             // Simple size-based rotation: if the log exceeds MAX_LOG_SIZE,
@@ -71,10 +101,7 @@ fn init_logging() {
                 }
             }
 
-            let file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&log_path);
+            let file = OpenOptions::new().create(true).append(true).open(&log_path);
             if let Ok(file) = file {
                 env_logger::Builder::from_default_env()
                     .filter_level(log::LevelFilter::Info)
@@ -118,7 +145,10 @@ fn run_daemon() -> Result<()> {
             Ok(p) => p,
             Err(e) => {
                 error!("Failed to resolve model path: {}", e);
-                let _ = result_tx.send(TranscriptionResult::Error(format!("Model path error: {}", e)));
+                let _ = result_tx.send(TranscriptionResult::Error(format!(
+                    "Model path error: {}",
+                    e
+                )));
                 return;
             }
         };
@@ -127,7 +157,10 @@ fn run_daemon() -> Result<()> {
             Ok(e) => e,
             Err(err) => {
                 error!("Failed to load STT engine: {}", err);
-                let _ = result_tx.send(TranscriptionResult::Error(format!("STT load error: {}", err)));
+                let _ = result_tx.send(TranscriptionResult::Error(format!(
+                    "STT load error: {}",
+                    err
+                )));
                 return;
             }
         };
@@ -158,8 +191,11 @@ fn run_daemon() -> Result<()> {
                 }
                 Job::Final(samples) => {
                     let start = Instant::now();
-                    info!("Transcribing {} samples ({:.1}s audio)...",
-                        samples.len(), samples.len() as f32 / 16000.0);
+                    info!(
+                        "Transcribing {} samples ({:.1}s audio)...",
+                        samples.len(),
+                        samples.len() as f32 / 16000.0
+                    );
 
                     match engine.transcribe(
                         &samples,
@@ -236,17 +272,26 @@ fn run_daemon() -> Result<()> {
 
         match event {
             Event::NewEvents(StartCause::Init) => {
-                info!("Flow daemon starting...");
+                info!("Mist daemon starting...");
                 info!("Hotkey: {} | Model: {} | Threads: {} | Max: {}s",
                     config.hotkey, config.model, config.n_threads, config.max_recording_secs);
                 if !effective_dict.is_empty() {
                     info!("Dictionary: {:?}", effective_dict);
                 }
                 let _ = Notification::new()
-                    .summary("Flow")
+                    .summary("Mist")
                     .body(&format!("Ready — press {} to dictate", config.hotkey))
                     .timeout(3000)
                     .show();
+
+                if !paste::typing_backend_available() {
+                    warn!("No typing backend available");
+                    let _ = Notification::new()
+                        .summary("Mist — Typing tool missing")
+                        .body("Install xdotool (X11), wtype (Wayland), or ydotool so Mist can type text.")
+                        .timeout(0)
+                        .show();
+                }
             }
             Event::MainEventsCleared => {
                 // --- Check for results from the STT thread ---
@@ -256,15 +301,23 @@ fn run_daemon() -> Result<()> {
                             info!("STT engine ready (warmed up)");
                         }
                         TranscriptionResult::Preview(text) => {
+                            if config.show_overlay {
+                                overlay.set_text(&text);
+                            }
                             let _ = Notification::new()
-                                .summary("Flow — Preview")
+                                .summary("Mist — Preview")
                                 .body(&truncate(&text, 120))
                                 .timeout(2000)
                                 .show();
                         }
                         TranscriptionResult::Done(text, elapsed) => {
+                            if config.show_overlay {
+                                overlay.set_state(overlay::OverlayState::Done);
+                                overlay.set_text(&text);
+                                overlay.dismiss_after(Duration::from_millis(2500));
+                            }
                             let _ = Notification::new()
-                                .summary("Flow ✓")
+                                .summary("Mist ✓")
                                 .body(&format!(
                                     "\"{}\" ({:.1}s)",
                                     truncate(&text, 80),
@@ -274,22 +327,37 @@ fn run_daemon() -> Result<()> {
                                 .show();
                         }
                         TranscriptionResult::Empty => {
+                            if config.show_overlay {
+                                overlay.set_state(overlay::OverlayState::Done);
+                                overlay.set_text("No speech");
+                                overlay.dismiss_after(Duration::from_secs(1));
+                            }
                             let _ = Notification::new()
-                                .summary("Flow")
+                                .summary("Mist")
                                 .body("No speech detected")
                                 .timeout(2000)
                                 .show();
                         }
                         TranscriptionResult::PasteFailed(text) => {
+                            if config.show_overlay {
+                                overlay.set_state(overlay::OverlayState::Error);
+                                overlay.set_text("Paste failed");
+                                overlay.dismiss_after(Duration::from_secs(2));
+                            }
                             let _ = Notification::new()
-                                .summary("Flow — Paste failed")
+                                .summary("Mist — Paste failed")
                                 .body(&format!("Text: {}", truncate(&text, 100)))
                                 .timeout(5000)
                                 .show();
                         }
                         TranscriptionResult::Error(msg) => {
+                            if config.show_overlay {
+                                overlay.set_state(overlay::OverlayState::Error);
+                                overlay.set_text("Error");
+                                overlay.dismiss_after(Duration::from_secs(2));
+                            }
                             let _ = Notification::new()
-                                .summary("Flow — Error")
+                                .summary("Mist — Error")
                                 .body(&truncate(&msg, 120))
                                 .timeout(5000)
                                 .show();
@@ -317,7 +385,9 @@ fn run_daemon() -> Result<()> {
                                         preview_buffer = Some(r.buffer());
                                         recorder = Some(r);
                                         if config.show_overlay {
-                                            overlay.show();
+                                            overlay.show_near_cursor();
+                                            overlay.set_state(overlay::OverlayState::Listening);
+                                            overlay.set_text("");
                                         }
                                     }
                                 }
@@ -333,7 +403,7 @@ fn run_daemon() -> Result<()> {
                                 &mut last_preview_len,
                                 recording_start,
                                 &config,
-                                &overlay,
+                                &mut overlay,
                                 &stt_tx,
                             );
                         }
@@ -346,7 +416,7 @@ fn run_daemon() -> Result<()> {
                                 &mut last_preview_len,
                                 recording_start,
                                 &config,
-                                &overlay,
+                                &mut overlay,
                                 &stt_tx,
                             );
                         }
@@ -354,7 +424,7 @@ fn run_daemon() -> Result<()> {
                     }
                 }
 
-                // --- Check max duration cap ---
+                // --- Check max duration cap and microphone permission ---
                 if recording {
                     if let Some(ref r) = recorder {
                         if r.was_capped() {
@@ -367,7 +437,31 @@ fn run_daemon() -> Result<()> {
                                 &mut last_preview_len,
                                 recording_start,
                                 &config,
-                                &overlay,
+                                &mut overlay,
+                                &stt_tx,
+                            );
+                        } else if recording_start.elapsed() > Duration::from_secs(1)
+                            && r.samples_received() == 0
+                        {
+                            warn!("No audio samples received — microphone may be muted or permission denied.");
+                            if config.show_overlay {
+                                overlay.set_state(overlay::OverlayState::Error);
+                                overlay.set_text("Mic blocked");
+                                overlay.dismiss_after(Duration::from_secs(3));
+                            }
+                            let _ = Notification::new()
+                                .summary("Mist — Microphone blocked")
+                                .body("No audio received. Check microphone permissions and that the device is not muted.")
+                                .timeout(5000)
+                                .show();
+                            stop_recording(
+                                &mut recorder,
+                                &mut recording,
+                                &mut preview_buffer,
+                                &mut last_preview_len,
+                                recording_start,
+                                &config,
+                                &mut overlay,
                                 &stt_tx,
                             );
                         }
@@ -388,15 +482,141 @@ fn run_daemon() -> Result<()> {
                     }
                 }
 
-                // --- Render overlay animation (~30 FPS during recording) ---
-                if recording && config.show_overlay && last_draw.elapsed() >= Duration::from_millis(33) {
+                // --- Render overlay animation (~30 FPS while visible) ---
+                if config.show_overlay && overlay.is_visible() && last_draw.elapsed() >= Duration::from_millis(33) {
                     last_draw = Instant::now();
-                    let _ = overlay.draw();
+                    if recording {
+                        if let Some(ref buf) = preview_buffer {
+                            if let Ok(lock) = buf.lock() {
+                                overlay.set_levels(&overlay::audio_levels(&lock, 12));
+                            }
+                        }
+                    }
+                    if overlay.should_dismiss() {
+                        overlay.hide();
+                    } else {
+                        let _ = overlay.draw();
+                    }
                 }
             }
             _ => {}
         }
     });
+}
+
+fn generate_screenshots(output: Option<std::path::PathBuf>) -> Result<()> {
+    let dir = output.unwrap_or_else(|| std::path::PathBuf::from("assets/screenshots"));
+    std::fs::create_dir_all(&dir)?;
+
+    let mut renderer = overlay::Renderer::new(280, 52);
+
+    // Listening: active waveform.
+    renderer.set_state(overlay::OverlayState::Listening);
+    renderer.set_levels(&[
+        0.9, 0.6, 0.3, 0.7, 0.95, 0.4, 0.2, 0.55, 0.85, 0.6, 0.3, 0.45,
+    ]);
+    renderer.clear_text();
+    save_overlay_png(&mut renderer, &dir.join("listening.png"))?;
+
+    // Processing: low activity with status text.
+    renderer.set_state(overlay::OverlayState::Processing);
+    renderer.set_levels(&[0.2; 12]);
+    renderer.set_text("Thinking…");
+    save_overlay_png(&mut renderer, &dir.join("processing.png"))?;
+
+    // Done: final transcribed text.
+    renderer.set_state(overlay::OverlayState::Done);
+    renderer.set_levels(&[0.0; 12]);
+    renderer.set_text("Deploy to Kubernetes after lunch.");
+    save_overlay_png(&mut renderer, &dir.join("done.png"))?;
+
+    println!("Screenshots saved to {:?}", dir);
+    Ok(())
+}
+
+fn save_overlay_png(renderer: &mut overlay::Renderer, path: &std::path::Path) -> Result<()> {
+    use image::{ImageBuffer, Rgba};
+    let width = renderer.width();
+    let height = renderer.height();
+    let buf = renderer.render();
+    let rgba: Vec<u8> = buf
+        .iter()
+        .flat_map(|&p| {
+            if p == 0 {
+                vec![0, 0, 0, 0]
+            } else {
+                let r = ((p >> 16) & 0xff) as u8;
+                let g = ((p >> 8) & 0xff) as u8;
+                let b = (p & 0xff) as u8;
+                vec![r, g, b, 255]
+            }
+        })
+        .collect();
+    let img: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_raw(width, height, rgba)
+        .ok_or_else(|| anyhow::anyhow!("invalid image buffer"))?;
+    img.save(path)?;
+    Ok(())
+}
+
+fn handle_dictionary(action: DictAction) -> Result<()> {
+    let mut config = config::Config::load()?;
+    match action {
+        DictAction::Add { word } => {
+            if config.add_dictionary_word(&word) {
+                config.save()?;
+                println!("Added '{}' to dictionary.", word);
+            } else {
+                println!("'{}' is already in the dictionary.", word);
+            }
+        }
+        DictAction::Remove { word } => {
+            if config.remove_dictionary_word(&word) {
+                config.save()?;
+                println!("Removed '{}' from dictionary.", word);
+            } else {
+                println!("'{}' is not in the dictionary.", word);
+            }
+        }
+        DictAction::List => {
+            println!("Dictionary terms: {:?}", config.dictionary);
+            println!("Corrections: {:?}", config.corrections);
+            println!("Replacements: {:?}", config.replacements);
+        }
+        DictAction::Import { path } => {
+            config.import_dictionary(&path)?;
+            config.save()?;
+            println!("Imported dictionary from {:?}.", path);
+        }
+        DictAction::Export { path } => {
+            config.export_dictionary(&path)?;
+            println!("Exported dictionary to {:?}.", path);
+        }
+    }
+    Ok(())
+}
+
+fn show_status() -> Result<()> {
+    let config = config::Config::load()?;
+    let data_dir =
+        directories::ProjectDirs::from("", "", "mist").map(|d| d.data_dir().to_path_buf());
+    let typing_ok = paste::typing_backend_available();
+
+    println!("Mist status");
+    println!("  Config path:   {:?}", config::Config::path()?);
+    println!("  Config exists: {}", config::Config::path()?.exists());
+    println!("  Data dir:      {:?}", data_dir);
+    println!("  Model:         {}", config.model);
+    println!("  Model file:    {:?}", config.model_path()?);
+    println!("  Model exists:  {}", config.model_path()?.exists());
+    println!("  Hotkey:        {}", config.hotkey);
+    println!("  Cleanup:       {}", config.cleanup_backend);
+    println!("  Overlay:       {}", config.show_overlay);
+    println!("  Live stream:   {}", config.live_stream);
+    println!(
+        "  Typing backend: {}",
+        if typing_ok { "ok" } else { "missing" }
+    );
+    Ok(())
 }
 
 enum TranscriptionResult {
@@ -415,23 +635,26 @@ fn stop_recording(
     last_preview_len: &mut usize,
     recording_start: Instant,
     config: &config::Config,
-    overlay: &overlay::Overlay,
+    overlay: &mut overlay::Overlay,
     stt_tx: &mpsc::Sender<Job>,
 ) {
     if let Some(mut r) = recorder.take() {
         *recording = false;
         *preview_buffer = None;
         *last_preview_len = 0;
-        if config.show_overlay {
-            overlay.hide();
-        }
 
         let duration = recording_start.elapsed();
 
         // Short recording guard: discard accidental taps.
         if duration.as_secs_f32() < MIN_RECORDING_SECS {
-            info!("Recording too short ({:.1}s < {:.1}s), discarding.",
-                duration.as_secs_f32(), MIN_RECORDING_SECS);
+            info!(
+                "Recording too short ({:.1}s < {:.1}s), discarding.",
+                duration.as_secs_f32(),
+                MIN_RECORDING_SECS
+            );
+            if config.show_overlay {
+                overlay.hide();
+            }
             let _ = r.stop(); // drain the buffer
             return;
         }
@@ -441,17 +664,36 @@ fn stop_recording(
             Ok(samples) => {
                 if samples.len() < 4000 {
                     // Less than 0.25s of audio after VAD trim — nothing useful.
-                    info!("Audio too short after VAD trim ({} samples), skipping.", samples.len());
+                    info!(
+                        "Audio too short after VAD trim ({} samples), skipping.",
+                        samples.len()
+                    );
+                    if config.show_overlay {
+                        overlay.set_state(overlay::OverlayState::Done);
+                        overlay.set_text("No speech");
+                        overlay.dismiss_after(Duration::from_secs(1));
+                    }
                     let _ = Notification::new()
-                        .summary("Flow")
+                        .summary("Mist")
                         .body("No speech detected")
                         .timeout(2000)
                         .show();
                     return;
                 }
+                if config.show_overlay {
+                    overlay.set_state(overlay::OverlayState::Processing);
+                    overlay.set_text("");
+                }
                 let _ = stt_tx.send(Job::Final(samples));
             }
-            Err(e) => error!("Failed to stop recording: {}", e),
+            Err(e) => {
+                error!("Failed to stop recording: {}", e);
+                if config.show_overlay {
+                    overlay.set_state(overlay::OverlayState::Error);
+                    overlay.set_text("Mic error");
+                    overlay.dismiss_after(Duration::from_secs(2));
+                }
+            }
         }
     }
 }

@@ -17,9 +17,16 @@
 - **Desktop file**: Added `StartupNotify` and `X-GNOME-Autostart-Enabled`
 
 ### Added
-- **GPU acceleration**: Optional CUDA, Metal, and Vulkan support via Cargo feature flags (`--features cuda`)
+- **Cursor-following overlay**: Minimal, real-time waveform + live text preview positioned near the mouse cursor
+- **System font rendering**: Overlay text drawn with `fontdb` + `fontdue`, falling back to iconic mode if no font is found
+- **GPU acceleration**: Optional CUDA, Metal, Vulkan, CoreML, and OpenBLAS support via Cargo feature flags
+- **More models**: Quantized `small.en-q5_0`, `medium.en-q5_0`, and `large-v3-turbo-q5_0` options for faster inference
+- **Phrase replacements**: Shortcut expansion via `[[replacements]]` config table (e.g. "my email" → `you@example.com`)
+- **Richer per-project dictionaries**: `.mist-dictionary.toml` now supports `terms`, `[[corrections]]`, and `[[replacements]]`
+- **CLI dictionary management**: `mist dictionary add|remove|list|import|export`
+- **`mist status` command**: Prints config, model, data dir, and typing-backend state
 - **Vocabulary correction layer**: Fuzzy post-STT correction dictionary using Jaro-Winkler similarity (≥0.88)
-- **Per-project dictionaries**: Auto-loads `.flow-dictionary.toml` from project root (searches 5 levels up)
+- **Per-project dictionaries**: Auto-loads `.mist-dictionary.toml` from project root (searches 5 levels up)
 - **Natural dictionary prompting**: Dictionary terms formatted as natural sentences for better Whisper bias
 - **Voice Activity Detection**: Energy-threshold VAD trims leading/trailing silence before transcription
 - **Dynamic thread count**: `n_threads` auto-detected from `available_parallelism()`, capped at 16
@@ -30,10 +37,18 @@
 - **Unknown key warnings**: Config loader warns about unrecognized TOML keys (typo detection)
 
 ### Changed
+- Project and binary renamed from `flow` to `mist`; config/data directories, systemd service, desktop entry, and per-project dictionary file (`.mist-dictionary.toml`) updated accordingly
+- `install.sh` is now guided: auto-detects acceleration, checks typing tools, optionally downloads the default model, and runs `mist setup`
+- Overlay rendering is now driven by real audio RMS levels instead of a fake sine animation
 - Test helpers deduplicated from 3 copies to single shared `tests/common/mod.rs`
-- Repository URL updated to `santhsecurity/flow`
+- Repository URL updated to `santhsecurity/mist`
 - `install.sh` passes extra arguments to `cargo build` (e.g. `./install.sh --features cuda`)
 - Candle cleanup backend uses structured `log` macros instead of `println!`
+
+### Fixed
+- Audio mutex poisoning is now recovered instead of panicking
+- Detects microphone permission/mute issues after ~1s of recording and surfaces an actionable notification
+- Surfaces a warning notification when no Linux typing backend is available
 
 ### Removed
 - Junk `tests/foo/` directory and empty fixture directories
@@ -51,7 +66,7 @@
 - Dictionary bias — Whisper initial prompt for domain-specific terms
 - Floating recording overlay on macOS/Windows (tao + softbuffer)
 - Desktop notifications on Linux
-- TOML configuration with interactive `flow setup` TUI
-- Structured logging to `~/.local/share/flow/flow.log`
+- TOML configuration with interactive `mist setup` TUI
+- Structured logging to `~/.local/share/mist/mist.log`
 - Systemd user service for auto-start
 - Comprehensive test suite: 78 tests across unit, integration, property, adversarial, and regression

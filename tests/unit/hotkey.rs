@@ -1,7 +1,7 @@
 mod helpers;
 
-use flow::hotkey::parse_hotkey;
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
+use mist::hotkey::parse_hotkey;
 
 #[test]
 fn test_valid_hotkeys() {

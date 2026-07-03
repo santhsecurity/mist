@@ -1,7 +1,7 @@
 use anyhow::Result;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use log::warn;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub struct AudioRecorder {
@@ -10,6 +10,7 @@ pub struct AudioRecorder {
     sample_rate: u32,
     max_samples: usize,
     capped: Arc<AtomicBool>,
+    samples_received: Arc<AtomicUsize>,
 }
 
 impl AudioRecorder {
@@ -25,6 +26,7 @@ impl AudioRecorder {
             sample_rate: 16000,
             max_samples,
             capped: Arc::new(AtomicBool::new(false)),
+            samples_received: Arc::new(AtomicUsize::new(0)),
         })
     }
 
@@ -36,6 +38,12 @@ impl AudioRecorder {
     /// duration cap.
     pub fn was_capped(&self) -> bool {
         self.capped.load(Ordering::Relaxed)
+    }
+
+    /// Number of audio samples captured since `start()` was called. Useful for
+    /// detecting mic permission failures or disconnected devices.
+    pub fn samples_received(&self) -> usize {
+        self.samples_received.load(Ordering::Relaxed)
     }
 
     pub fn start(&mut self) -> Result<()> {
@@ -57,6 +65,7 @@ impl AudioRecorder {
         let samples = self.samples.clone();
         let max = self.max_samples;
         let capped = self.capped.clone();
+        let received = self.samples_received.clone();
         let err_fn = |err| warn!("Audio stream error: {}", err);
 
         let stream = match sample_format {
@@ -73,6 +82,7 @@ impl AudioRecorder {
                             return;
                         }
                         let n = data.len().min(remaining);
+                        received.fetch_add(n, Ordering::Relaxed);
                         buf.extend_from_slice(&data[..n]);
                     }
                 },
@@ -82,6 +92,7 @@ impl AudioRecorder {
             cpal::SampleFormat::I16 => {
                 let samples = self.samples.clone();
                 let capped = self.capped.clone();
+                let received = self.samples_received.clone();
                 device.build_input_stream(
                     &config.into(),
                     move |data: &[i16], _: &cpal::InputCallbackInfo| {
@@ -95,6 +106,7 @@ impl AudioRecorder {
                                 return;
                             }
                             let n = data.len().min(remaining);
+                            received.fetch_add(n, Ordering::Relaxed);
                             for &s in &data[..n] {
                                 buf.push(s as f32 / 32768.0);
                             }
@@ -107,6 +119,7 @@ impl AudioRecorder {
             cpal::SampleFormat::U16 => {
                 let samples = self.samples.clone();
                 let capped = self.capped.clone();
+                let received = self.samples_received.clone();
                 device.build_input_stream(
                     &config.into(),
                     move |data: &[u16], _: &cpal::InputCallbackInfo| {
@@ -120,6 +133,7 @@ impl AudioRecorder {
                                 return;
                             }
                             let n = data.len().min(remaining);
+                            received.fetch_add(n, Ordering::Relaxed);
                             for &s in &data[..n] {
                                 // Correct U16→f32: map [0, 65535] → [-1.0, 1.0]
                                 buf.push((s as f32 / 32767.5) - 1.0);
@@ -141,7 +155,10 @@ impl AudioRecorder {
     pub fn stop(&mut self) -> Result<Vec<f32>> {
         drop(self.stream.take());
         let samples = {
-            let mut buf = self.samples.lock().unwrap();
+            let mut buf = self
+                .samples
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             std::mem::take(&mut *buf)
         };
 

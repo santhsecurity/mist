@@ -1,7 +1,7 @@
 mod helpers;
 
-use flow::cleanup::cleanup;
-use flow::config::Config;
+use mist::cleanup::cleanup;
+use mist::config::Config;
 
 #[test]
 fn test_fast_cleanup_removes_fillers() {
@@ -40,7 +40,10 @@ fn test_fast_cleanup_case_insensitive() {
         cleanup_backend: "fast".to_string(),
         ..Config::default()
     };
-    assert_eq!(cleanup("UM hello UH world", &config).unwrap(), "hello world");
+    assert_eq!(
+        cleanup("UM hello UH world", &config).unwrap(),
+        "hello world"
+    );
 }
 
 #[test]

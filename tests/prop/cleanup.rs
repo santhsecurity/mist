@@ -1,10 +1,9 @@
-use flow::cleanup::cleanup;
-use flow::config::Config;
+use mist::cleanup::cleanup;
+use mist::config::Config;
 use proptest::prelude::*;
 
 fn random_string() -> impl Strategy<Value = String> {
-    proptest::collection::vec(any::<char>(), 0..200)
-        .prop_map(|chars| chars.into_iter().collect())
+    proptest::collection::vec(any::<char>(), 0..200).prop_map(|chars| chars.into_iter().collect())
 }
 
 fn fast_cleanup(text: &str) -> anyhow::Result<String> {

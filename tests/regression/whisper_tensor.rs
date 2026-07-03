@@ -4,7 +4,7 @@
 //! files. `SttEngine::new` must reject such files gracefully by returning
 //! `Result::Err` instead of crashing the process.
 
-use flow::stt::SttEngine;
+use mist::stt::SttEngine;
 
 /// Partial, corrupt, and empty model files must all be rejected gracefully.
 #[test]

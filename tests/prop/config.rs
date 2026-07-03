@@ -1,4 +1,4 @@
-use flow::config::Config;
+use mist::config::Config;
 use proptest::prelude::*;
 
 fn random_string() -> impl Strategy<Value = String> {

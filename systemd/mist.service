@@ -1,10 +1,10 @@
 [Unit]
-Description=Flow Voice Dictation Daemon
+Description=Mist Voice Dictation Daemon
 After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/flow run
+ExecStart=%h/.local/bin/mist run
 Restart=on-failure
 RestartSec=5
 Environment=RUST_LOG=info
