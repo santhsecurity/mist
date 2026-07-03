@@ -508,20 +508,33 @@ fn generate_screenshots(output: Option<std::path::PathBuf>) -> Result<()> {
     let dir = output.unwrap_or_else(|| std::path::PathBuf::from("assets/screenshots"));
     std::fs::create_dir_all(&dir)?;
 
-    let mut renderer = overlay::Renderer::new(400, 56);
+    let mut renderer = overlay::Renderer::new(360, 48);
 
     // Listening: active waveform.
     renderer.set_state(overlay::OverlayState::Listening);
-    let wave: Vec<f32> = (0..160).map(|i| (i as f32 / 10.0).sin() * 0.9).collect();
+    let wave: Vec<f32> = (0..200)
+        .map(|i| {
+            let t = i as f32;
+            let envelope = (t / 30.0).sin() * 0.45 + 0.55;
+            ((t / 3.0).sin() + 0.5 * (t / 7.0).sin() + 0.25 * (t / 13.0).sin())
+                * envelope
+                * 0.55
+        })
+        .collect();
     renderer.set_waveform_samples(&wave);
     renderer.clear_text();
     save_overlay_png(&mut renderer, &dir.join("listening.png"))?;
 
     // Processing: low activity with status text.
     renderer.set_state(overlay::OverlayState::Processing);
-    let wave: Vec<f32> = (0..160).map(|i| (i as f32 / 20.0).sin() * 0.08).collect();
+    let wave: Vec<f32> = (0..200)
+        .map(|i| {
+            let t = i as f32;
+            (t / 6.0).sin() * 0.08 * ((t / 25.0).sin() * 0.5 + 0.5)
+        })
+        .collect();
     renderer.set_waveform_samples(&wave);
-    renderer.set_text("Thinking…");
+    renderer.set_text("Working…");
     save_overlay_png(&mut renderer, &dir.join("processing.png"))?;
 
     // Done: final transcribed text.

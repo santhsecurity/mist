@@ -21,7 +21,7 @@ You can regenerate these with `mist screenshot`.
 - **Cross-platform** — Linux (X11/Wayland), macOS, Windows
 - **Hold-to-talk** — Hold hotkey to record, release to transcribe and type
 - **Cursor-following overlay** — A minimal, real-time waveform and live text preview appears near your cursor while you speak
-- **Premium rendering** — Soft shadow, gradient pill, anti-aliased orb, system font with text halo
+- **Premium rendering** — Anti-aliased capsule, hairline border, smooth waveform, system typography
 - **Modular cleanup** — `fast` (default), `candle`, `ollama`, `command`, or `none`
 - **Vocabulary correction** — Fuzzy post-STT correction dictionary for domain terms
 - **Phrase replacements** — Expand shortcuts like "my email" → `you@example.com`
