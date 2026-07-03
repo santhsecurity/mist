@@ -5,7 +5,7 @@ use tao::event_loop::EventLoop;
 use tao::window::{Window, WindowBuilder};
 
 mod renderer;
-pub use renderer::{audio_levels, OverlayState, Renderer};
+pub use renderer::{waveform_from_samples, OverlayState, Renderer};
 
 pub struct Overlay {
     window: Window,
@@ -32,11 +32,13 @@ fn leak_window_and_context(window: Window) -> Result<Leaked> {
 
 impl Overlay {
     pub fn new(event_loop: &EventLoop<()>) -> Result<Self> {
+        let width = 400;
+        let height = 56;
         let window = WindowBuilder::new()
             .with_decorations(false)
             .with_always_on_top(true)
             .with_visible(false)
-            .with_inner_size(LogicalSize::new(280.0, 52.0))
+            .with_inner_size(LogicalSize::new(width as f64, height as f64))
             .with_transparent(true)
             .with_resizable(false)
             .with_title("Mist")
@@ -51,7 +53,7 @@ impl Overlay {
         Ok(Self {
             window: unsafe { std::ptr::read(window_ref as *const Window) },
             surface,
-            renderer: Renderer::new(280, 52),
+            renderer: Renderer::new(width, height),
             show_until: None,
         })
     }
@@ -70,7 +72,10 @@ impl Overlay {
                 if let Some(monitor) = self.window.current_monitor() {
                     let size = monitor.size();
                     let pos = monitor.position();
-                    (pos.x + size.width as i32 - 300, pos.y + 24)
+                    (
+                        pos.x + size.width as i32 - (self.renderer.width() as i32 + 20),
+                        pos.y + 24,
+                    )
                 } else {
                     (100, 100)
                 }
@@ -102,8 +107,8 @@ impl Overlay {
         self.renderer.set_state(state);
     }
 
-    pub fn set_levels(&mut self, levels: &[f32]) {
-        self.renderer.set_levels(levels);
+    pub fn set_waveform_samples(&mut self, samples: &[f32]) {
+        self.renderer.set_waveform_samples(samples);
     }
 
     pub fn set_text(&mut self, text: impl Into<String>) {
@@ -133,11 +138,11 @@ impl Overlay {
             self.renderer = Renderer::new(width, height).with_font(self.renderer.take_font());
         }
 
-        let buffer = self.renderer.render();
-        self.blit(&buffer, width, height)
+        let rgba = self.renderer.render();
+        self.blit(&rgba, width, height)
     }
 
-    fn blit(&mut self, buffer: &[u32], width: u32, height: u32) -> Result<()> {
+    fn blit(&mut self, rgba: &[u8], width: u32, height: u32) -> Result<()> {
         use std::num::NonZeroU32;
         let w_nz = NonZeroU32::new(width).unwrap();
         let h_nz = NonZeroU32::new(height).unwrap();
@@ -148,7 +153,21 @@ impl Overlay {
             .surface
             .buffer_mut()
             .map_err(|e| anyhow::anyhow!("buffer: {}", e))?;
-        sb.copy_from_slice(buffer);
+
+        // Convert unpremultiplied RGBA to 0x00RRGGBB for softbuffer.
+        // softbuffer does not support per-pixel alpha; 0 is transparent,
+        // everything else is opaque.
+        let u32_buf: Vec<u32> = rgba
+            .chunks_exact(4)
+            .map(|c| {
+                if c[3] == 0 {
+                    0
+                } else {
+                    ((c[0] as u32) << 16) | ((c[1] as u32) << 8) | (c[2] as u32)
+                }
+            })
+            .collect();
+        sb.copy_from_slice(&u32_buf);
         sb.present()
             .map_err(|e| anyhow::anyhow!("present: {}", e))?;
         Ok(())

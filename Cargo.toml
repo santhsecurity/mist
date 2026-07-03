@@ -48,6 +48,7 @@ mouse_position = "0.1.4"
 fontdb = "0.23.0"
 fontdue = "0.9.3"
 image = { version = "0.25.6", default-features = false, features = ["png"] }
+tiny-skia = "0.12.0"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 enigo = "0.3"

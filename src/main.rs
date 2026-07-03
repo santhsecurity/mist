@@ -488,7 +488,7 @@ fn run_daemon() -> Result<()> {
                     if recording {
                         if let Some(ref buf) = preview_buffer {
                             if let Ok(lock) = buf.lock() {
-                                overlay.set_levels(&overlay::audio_levels(&lock, 12));
+                                overlay.set_waveform_samples(&overlay::waveform_from_samples(&lock, 160));
                             }
                         }
                     }
@@ -508,26 +508,26 @@ fn generate_screenshots(output: Option<std::path::PathBuf>) -> Result<()> {
     let dir = output.unwrap_or_else(|| std::path::PathBuf::from("assets/screenshots"));
     std::fs::create_dir_all(&dir)?;
 
-    let mut renderer = overlay::Renderer::new(280, 52);
+    let mut renderer = overlay::Renderer::new(400, 56);
 
     // Listening: active waveform.
     renderer.set_state(overlay::OverlayState::Listening);
-    renderer.set_levels(&[
-        0.9, 0.6, 0.3, 0.7, 0.95, 0.4, 0.2, 0.55, 0.85, 0.6, 0.3, 0.45,
-    ]);
+    let wave: Vec<f32> = (0..160).map(|i| (i as f32 / 10.0).sin() * 0.9).collect();
+    renderer.set_waveform_samples(&wave);
     renderer.clear_text();
     save_overlay_png(&mut renderer, &dir.join("listening.png"))?;
 
     // Processing: low activity with status text.
     renderer.set_state(overlay::OverlayState::Processing);
-    renderer.set_levels(&[0.2; 12]);
+    let wave: Vec<f32> = (0..160).map(|i| (i as f32 / 20.0).sin() * 0.08).collect();
+    renderer.set_waveform_samples(&wave);
     renderer.set_text("Thinking…");
     save_overlay_png(&mut renderer, &dir.join("processing.png"))?;
 
     // Done: final transcribed text.
     renderer.set_state(overlay::OverlayState::Done);
-    renderer.set_levels(&[0.0; 12]);
-    renderer.set_text("Deploy to Kubernetes after lunch.");
+    renderer.set_waveform_samples(&[]);
+    renderer.set_text("Deploy to Kubernetes.");
     save_overlay_png(&mut renderer, &dir.join("done.png"))?;
 
     println!("Screenshots saved to {:?}", dir);
@@ -538,20 +538,7 @@ fn save_overlay_png(renderer: &mut overlay::Renderer, path: &std::path::Path) ->
     use image::{ImageBuffer, Rgba};
     let width = renderer.width();
     let height = renderer.height();
-    let buf = renderer.render();
-    let rgba: Vec<u8> = buf
-        .iter()
-        .flat_map(|&p| {
-            if p == 0 {
-                vec![0, 0, 0, 0]
-            } else {
-                let r = ((p >> 16) & 0xff) as u8;
-                let g = ((p >> 8) & 0xff) as u8;
-                let b = (p & 0xff) as u8;
-                vec![r, g, b, 255]
-            }
-        })
-        .collect();
+    let rgba = renderer.render();
     let img: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_raw(width, height, rgba)
         .ok_or_else(|| anyhow::anyhow!("invalid image buffer"))?;
     img.save(path)?;
