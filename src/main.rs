@@ -40,6 +40,8 @@ enum Commands {
         #[arg(short, long)]
         output: Option<std::path::PathBuf>,
     },
+    /// Show recent daemon log output
+    Logs,
 }
 
 #[derive(Subcommand)]
@@ -74,6 +76,7 @@ fn main() -> Result<()> {
         Some(Commands::Dictionary { action }) => handle_dictionary(action),
         Some(Commands::Status) => show_status(),
         Some(Commands::Screenshot { output }) => generate_screenshots(output),
+        Some(Commands::Logs) => show_logs(),
         Some(Commands::Run) | None => run_daemon(),
     }
 }
@@ -250,6 +253,7 @@ fn run_daemon() -> Result<()> {
     let mut preview_buffer: Option<std::sync::Arc<std::sync::Mutex<Vec<f32>>>> = None;
     let mut last_preview_len: usize = 0;
     let mut last_draw = Instant::now();
+    let mut last_overlay_move = Instant::now();
     let mut recording_start = Instant::now();
 
     let running_loop = running.clone();
@@ -492,6 +496,10 @@ fn run_daemon() -> Result<()> {
                             }
                         }
                     }
+                    if last_overlay_move.elapsed() >= Duration::from_millis(50) {
+                        last_overlay_move = Instant::now();
+                        overlay.reposition_near_cursor();
+                    }
                     if overlay.should_dismiss() {
                         overlay.hide();
                     } else {
@@ -573,6 +581,25 @@ fn handle_dictionary(action: DictAction) -> Result<()> {
             config.export_dictionary(&path)?;
             println!("Exported dictionary to {:?}.", path);
         }
+    }
+    Ok(())
+}
+
+fn show_logs() -> Result<()> {
+    let log_path = directories::ProjectDirs::from("", "", "mist")
+        .map(|d| d.data_dir().join("mist.log"));
+    let Some(path) = log_path else {
+        anyhow::bail!("Could not determine project data directory.");
+    };
+    if !path.exists() {
+        println!("No log file found at {:?}", path);
+        return Ok(());
+    }
+    let contents = std::fs::read_to_string(&path)?;
+    let lines: Vec<&str> = contents.lines().collect();
+    let tail = lines.iter().rev().take(200).rev().copied().collect::<Vec<_>>();
+    for line in tail {
+        println!("{}", line);
     }
     Ok(())
 }

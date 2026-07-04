@@ -64,7 +64,17 @@ impl Overlay {
         self.renderer.reset_time();
         self.show_until = None;
 
-        let offset = 18;
+        self.position_at_cursor();
+        self.window.set_visible(true);
+    }
+
+    /// Move the already-visible overlay to stay near the cursor without
+    /// resetting its content or timer.
+    pub fn reposition_near_cursor(&self) {
+        self.position_at_cursor();
+    }
+
+    fn position_at_cursor(&self) {
         let (mx, my) = match mouse_position::mouse_position::Mouse::get_mouse_position() {
             mouse_position::mouse_position::Mouse::Position { x, y } => (x, y),
             mouse_position::mouse_position::Mouse::Error => {
@@ -83,16 +93,11 @@ impl Overlay {
         };
 
         let size = self.window.inner_size();
-        let pos = clamp_to_monitor(
-            &self.window,
-            mx + offset,
-            my + offset,
-            size.width as i32,
-            size.height as i32,
-        );
-
+        // Center the bar horizontally over the cursor and place it just above.
+        let x = mx - (size.width as i32 / 2);
+        let y = my - size.height as i32 - 12;
+        let pos = clamp_to_monitor(&self.window, x, y, size.width as i32, size.height as i32);
         self.window.set_outer_position(pos);
-        self.window.set_visible(true);
     }
 
     pub fn hide(&self) {
