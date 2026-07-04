@@ -1,12 +1,12 @@
-use mist::{audio, cleanup, config, hotkey, overlay, paste, stt};
+use mist::{audio, audio_feedback, cleanup, config, hotkey, icon, overlay, paste, stt};
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use global_hotkey::{GlobalHotKeyManager, HotKeyState};
 use log::{error, info, warn};
 use notify_rust::Notification;
-use std::fs::OpenOptions;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::fs::OpenOptions;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
@@ -42,6 +42,21 @@ enum Commands {
     },
     /// Show recent daemon log output
     Logs,
+    /// Download or inspect Whisper models
+    Model {
+        #[command(subcommand)]
+        action: ModelAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ModelAction {
+    /// List available models and whether they are installed
+    List,
+    /// Download a model by name (e.g. small.en)
+    Download { name: String },
+    /// Delete a downloaded model
+    Remove { name: String },
 }
 
 #[derive(Subcommand)]
@@ -59,8 +74,8 @@ enum DictAction {
 }
 
 enum Job {
-    Preview(Vec<f32>),
-    Final(Vec<f32>),
+    Preview(Vec<f32>, config::DictionarySnapshot),
+    Final(Vec<f32>, config::DictionarySnapshot),
 }
 
 /// Minimum recording duration in seconds. Anything shorter is discarded as an
@@ -77,6 +92,7 @@ fn main() -> Result<()> {
         Some(Commands::Status) => show_status(),
         Some(Commands::Screenshot { output }) => generate_screenshots(output),
         Some(Commands::Logs) => show_logs(),
+        Some(Commands::Model { action }) => handle_model(action),
         Some(Commands::Run) | None => run_daemon(),
     }
 }
@@ -121,10 +137,6 @@ fn init_logging() {
 fn run_daemon() -> Result<()> {
     let config = config::Config::load()?;
     let config_clone = config.clone();
-
-    // Merge per-project dictionary terms with global dictionary.
-    let effective_dict = config.effective_dictionary();
-    let effective_dict_clone = effective_dict.clone();
 
     let (stt_tx, stt_rx) = mpsc::channel::<Job>();
 
@@ -175,14 +187,14 @@ fn run_daemon() -> Result<()> {
 
         while let Ok(job) = stt_rx.recv() {
             match job {
-                Job::Preview(samples) => {
+                Job::Preview(samples, snapshot) => {
                     if samples.len() < 16000 {
                         continue;
                     }
                     match engine.transcribe(
                         &samples,
                         &config_clone.language,
-                        &effective_dict_clone,
+                        &snapshot,
                         config_clone.n_threads,
                     ) {
                         Ok(text) if !text.is_empty() => {
@@ -192,7 +204,7 @@ fn run_daemon() -> Result<()> {
                         _ => {}
                     }
                 }
-                Job::Final(samples) => {
+                Job::Final(samples, snapshot) => {
                     let start = Instant::now();
                     info!(
                         "Transcribing {} samples ({:.1}s audio)...",
@@ -203,7 +215,7 @@ fn run_daemon() -> Result<()> {
                     match engine.transcribe(
                         &samples,
                         &config_clone.language,
-                        &effective_dict_clone,
+                        &snapshot,
                         config_clone.n_threads,
                     ) {
                         Ok(mut text) => {
@@ -241,12 +253,31 @@ fn run_daemon() -> Result<()> {
     // Global hotkey.
     let manager = GlobalHotKeyManager::new()?;
     let hotkey = hotkey::parse_hotkey(&config.hotkey)?;
-    manager.register(hotkey)?;
+    if let Err(e) = manager.register(hotkey) {
+        eprintln!(
+            "Failed to register hotkey '{}': {}\n\n\
+             Common causes:\n\
+             • Another application (or the OS) is already using {}\n\
+             • The shortcut requires higher privileges than Mist has\n\n\
+             Try a different shortcut, for example:\n\
+               Alt+Shift+D\n\
+               Ctrl+Shift+Space\n\
+               F9\n\n\
+             Change it with: mist setup",
+            config.hotkey, e, config.hotkey
+        );
+        std::process::exit(1);
+    }
     let receiver = global_hotkey::GlobalHotKeyEvent::receiver();
 
     // Event loop for overlay + hotkey polling.
     let event_loop = tao::event_loop::EventLoopBuilder::new().build();
     let mut overlay = overlay::Overlay::new(&event_loop)?;
+
+    // Optional system tray icon.
+    let tray = init_tray();
+    let _tray_events = tray_icon::TrayIconEvent::receiver();
+    let menu_events = tray_icon::menu::MenuEvent::receiver();
 
     let mut recording = false;
     let mut recorder: Option<audio::AudioRecorder> = None;
@@ -279,8 +310,8 @@ fn run_daemon() -> Result<()> {
                 info!("Mist daemon starting...");
                 info!("Hotkey: {} | Model: {} | Threads: {} | Max: {}s",
                     config.hotkey, config.model, config.n_threads, config.max_recording_secs);
-                if !effective_dict.is_empty() {
-                    info!("Dictionary: {:?}", effective_dict);
+                if !config.dictionary.is_empty() {
+                    info!("Dictionary: {:?}", config.dictionary);
                 }
                 let _ = Notification::new()
                     .summary("Mist")
@@ -298,6 +329,27 @@ fn run_daemon() -> Result<()> {
                 }
             }
             Event::MainEventsCleared => {
+                // --- Check tray menu events ---
+                while let Ok(event) = menu_events.try_recv() {
+                    if tray.quit_id.as_ref() == Some(&event.id) {
+                        info!("Quit requested from tray");
+                        running_loop.store(false, Ordering::Relaxed);
+                        *control_flow = ControlFlow::Exit;
+                        return;
+                    }
+                    if tray.open_config_id.as_ref() == Some(&event.id) {
+                        if let Ok(path) = config::Config::path() {
+                            let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or(path);
+                            let _ = open_path(&dir);
+                        }
+                    }
+                    if tray.open_logs_id.as_ref() == Some(&event.id) {
+                        if let Some(dir) = directories::ProjectDirs::from("", "", "mist") {
+                            let _ = open_path(&dir.data_dir().to_path_buf());
+                        }
+                    }
+                }
+
                 // --- Check for results from the STT thread ---
                 while let Ok(result) = result_rx.try_recv() {
                     match result {
@@ -388,6 +440,9 @@ fn run_daemon() -> Result<()> {
                                         last_preview_len = 0;
                                         preview_buffer = Some(r.buffer());
                                         recorder = Some(r);
+                                        if config.audio_feedback {
+                                            audio_feedback::play_start();
+                                        }
                                         if config.show_overlay {
                                             overlay.show_near_cursor();
                                             overlay.set_state(overlay::OverlayState::Listening);
@@ -398,8 +453,8 @@ fn run_daemon() -> Result<()> {
                                 Err(e) => error!("Recorder init failed: {}", e),
                             }
                         }
-                        HotKeyState::Released if recording => {
-                            // Stop recording on key release (hold-to-talk).
+                        HotKeyState::Released if recording && !config.toggle_mode => {
+                            // Hold-to-talk: stop on key release.
                             stop_recording(
                                 &mut recorder,
                                 &mut recording,
@@ -411,8 +466,8 @@ fn run_daemon() -> Result<()> {
                                 &stt_tx,
                             );
                         }
-                        HotKeyState::Pressed if recording => {
-                            // Fallback: second press also stops (toggle mode).
+                        HotKeyState::Pressed if recording && config.toggle_mode => {
+                            // Toggle mode: second press stops.
                             stop_recording(
                                 &mut recorder,
                                 &mut recording,
@@ -480,7 +535,8 @@ fn run_daemon() -> Result<()> {
                             let new_samples = current_len.saturating_sub(last_preview_len);
                             if new_samples >= 24000 {
                                 last_preview_len = current_len;
-                                let _ = stt_tx.send(Job::Preview(lock.clone()));
+                                let snapshot = config.dictionary_snapshot();
+                                let _ = stt_tx.send(Job::Preview(lock.clone(), snapshot));
                             }
                         }
                     }
@@ -585,6 +641,29 @@ fn handle_dictionary(action: DictAction) -> Result<()> {
     Ok(())
 }
 
+fn handle_model(action: ModelAction) -> Result<()> {
+    match action {
+        ModelAction::List => {
+            for info in stt::list_models() {
+                let status = if info.installed { "installed" } else { "not installed" };
+                println!(
+                    "  {:24} ~{:>5} MB   {}",
+                    info.name, info.size_mb, status
+                );
+            }
+        }
+        ModelAction::Download { name } => {
+            stt::download_model_by_name(&name)?;
+            println!("Downloaded model '{}'.", name);
+        }
+        ModelAction::Remove { name } => {
+            stt::remove_model(&name)?;
+            println!("Removed model '{}'.", name);
+        }
+    }
+    Ok(())
+}
+
 fn show_logs() -> Result<()> {
     let log_path = directories::ProjectDirs::from("", "", "mist")
         .map(|d| d.data_dir().join("mist.log"));
@@ -647,6 +726,9 @@ fn stop_recording(
     overlay: &mut overlay::Overlay,
     stt_tx: &mpsc::Sender<Job>,
 ) {
+    if config.audio_feedback {
+        audio_feedback::play_stop();
+    }
     if let Some(mut r) = recorder.take() {
         *recording = false;
         *preview_buffer = None;
@@ -693,7 +775,8 @@ fn stop_recording(
                     overlay.set_state(overlay::OverlayState::Processing);
                     overlay.set_text("PROCESSING");
                 }
-                let _ = stt_tx.send(Job::Final(samples));
+                let snapshot = config.dictionary_snapshot();
+                let _ = stt_tx.send(Job::Final(samples, snapshot));
             }
             Err(e) => {
                 error!("Failed to stop recording: {}", e);
@@ -715,4 +798,78 @@ fn truncate(s: &str, max: usize) -> String {
         let truncated: String = s.chars().take(max.saturating_sub(1)).collect();
         format!("{}…", truncated)
     }
+}
+
+/// Optional system tray state. Any part may be None if the tray backend is
+/// unavailable; Mist continues to work normally without it.
+struct TrayState {
+    _icon: Option<tray_icon::TrayIcon>,
+    open_config_id: Option<tray_icon::menu::MenuId>,
+    open_logs_id: Option<tray_icon::menu::MenuId>,
+    quit_id: Option<tray_icon::menu::MenuId>,
+}
+
+fn init_tray() -> TrayState {
+    let Some((rgba, width, height)) = icon::app_icon_rgba() else {
+        warn!("Failed to render tray icon");
+        return TrayState {
+            _icon: None,
+            open_config_id: None,
+            open_logs_id: None,
+            quit_id: None,
+        };
+    };
+    let Ok(icon) = tray_icon::Icon::from_rgba(rgba, width, height) else {
+        warn!("Failed to create tray icon from RGBA");
+        return TrayState {
+            _icon: None,
+            open_config_id: None,
+            open_logs_id: None,
+            quit_id: None,
+        };
+    };
+
+    let menu = tray_icon::menu::Menu::new();
+    let open_config = tray_icon::menu::MenuItem::new("Open config folder", true, None);
+    let open_logs = tray_icon::menu::MenuItem::new("Open data folder", true, None);
+    let quit = tray_icon::menu::MenuItem::new("Quit", true, None);
+    let open_config_id = open_config.id().clone();
+    let open_logs_id = open_logs.id().clone();
+    let quit_id = quit.id().clone();
+
+    let _ = menu.append(&open_config);
+    let _ = menu.append(&open_logs);
+    let _ = menu.append(&tray_icon::menu::PredefinedMenuItem::separator());
+    let _ = menu.append(&quit);
+
+    let icon = tray_icon::TrayIconBuilder::new()
+        .with_menu(Box::new(menu))
+        .with_icon(icon)
+        .with_title("Mist")
+        .with_tooltip("Mist dictation daemon")
+        .build();
+
+    if let Err(ref e) = icon {
+        warn!("Failed to create tray icon: {}", e);
+    }
+
+    TrayState {
+        _icon: icon.ok(),
+        open_config_id: Some(open_config_id),
+        open_logs_id: Some(open_logs_id),
+        quit_id: Some(quit_id),
+    }
+}
+
+/// Best-effort open a path in the system file manager.
+fn open_path(path: &std::path::Path) -> std::io::Result<()> {
+    let (cmd, arg) = if cfg!(target_os = "macos") {
+        ("open", path.as_os_str())
+    } else if cfg!(target_os = "windows") {
+        ("explorer", path.as_os_str())
+    } else {
+        ("xdg-open", path.as_os_str())
+    };
+    std::process::Command::new(cmd).arg(arg).spawn()?;
+    Ok(())
 }

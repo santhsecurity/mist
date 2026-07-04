@@ -16,6 +16,8 @@ fn test_default_config_values() {
     assert!(config.cleanup_enabled);
     assert!(!config.live_stream);
     assert!(config.show_overlay);
+    assert!(!config.toggle_mode);
+    assert!(!config.audio_feedback);
     assert_eq!(config.ollama_model, "qwen3:0.6b");
     assert_eq!(config.ollama_url, "http://localhost:11434");
     assert!(config
@@ -144,4 +146,15 @@ fn test_new_config_fields_have_sane_defaults() {
     // n_threads should be > 0 and <= 16 on any machine.
     assert!(config.n_threads > 0 && config.n_threads <= 16);
     assert!(config.corrections.is_empty());
+}
+
+#[test]
+fn test_dictionary_snapshot_merges_global_terms() {
+    let mut config = Config::default();
+    config.dictionary.push("Rust".to_string());
+    config.dictionary.push("Kubernetes".to_string());
+
+    let snapshot = config.dictionary_snapshot();
+    assert!(snapshot.terms.contains(&"Rust".to_string()));
+    assert!(snapshot.terms.contains(&"Kubernetes".to_string()));
 }

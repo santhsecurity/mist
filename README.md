@@ -19,18 +19,22 @@ You can regenerate these with `mist screenshot`.
 - **Zero external setup** — Whisper runs locally; optional Candle LLM cleanup
 - **Direct typing** — Text appears at your cursor, no clipboard pollution
 - **Cross-platform** — Linux (X11/Wayland), macOS, Windows
-- **Hold-to-talk** — Hold hotkey to record, release to transcribe and type
+- **Hold-to-talk or toggle mode** — Hold hotkey to record, or press once to start and again to stop
 - **Cursor-following overlay** — A minimal, monochrome status bar appears near your cursor while you speak
 - **Premium rendering** — Sleek black pill, hairline border, system typography
+- **Audio feedback** — Optional start/stop clicks so you know the state without looking
 - **Modular cleanup** — `fast` (default), `candle`, `ollama`, `command`, or `none`
 - **Vocabulary correction** — Fuzzy post-STT correction dictionary for domain terms
 - **Phrase replacements** — Expand shortcuts like "my email" → `you@example.com`
 - **Dictionary bias** — Natural-sentence Whisper prompting for custom vocabulary
-- **Per-project dictionaries** — Auto-load terms, corrections, and replacements from `.mist-dictionary.toml`
+- **Per-project dictionaries** — Auto-load terms, corrections, and replacements from `.mist-dictionary.toml`; edits are picked up on the next dictation
+- **Model management** — `mist model list/download/remove` to manage Whisper models
+- **System tray** — Tray icon with open config/data folder and quit actions
 - **Voice Activity Detection** — Trims silence before transcription for faster results
 - **Live preview** — Optional chunked transcription while you speak
 - **Graceful shutdown** — Clean Ctrl+C handling, systemd integration
 - **Health check** — `mist status` shows config, model, and typing-backend state
+- **Diagnostics** — `mist logs` prints the latest daemon log output
 
 ## Install
 
@@ -99,6 +103,10 @@ mist run          # Explicitly run daemon
 mist setup        # Interactive configuration
 mist status       # Show daemon status
 mist screenshot   # Generate overlay screenshots
+mist logs         # Show recent daemon logs
+mist model list
+mist model download small.en
+mist model remove base.en
 mist dictionary add Kubernetes
 mist dictionary list
 mist dictionary import ./my-dict.toml
@@ -107,7 +115,7 @@ mist dictionary export ./my-dict.toml
 
 **Default hotkey:** `Alt+Shift+D`
 
-Hold to record, release to transcribe and type. Second press also stops (fallback toggle mode).
+Hold to record, release to transcribe and type. Switch to toggle mode in `mist setup` to press once to start and again to stop.
 
 ## Configuration
 

@@ -19,6 +19,8 @@ proptest! {
         cleanup_enabled in any::<bool>(),
         live_stream in any::<bool>(),
         show_overlay in any::<bool>(),
+        toggle_mode in any::<bool>(),
+        audio_feedback in any::<bool>(),
         max_recording_secs in 1u32..600u32,
         n_threads in 1u32..32u32,
     ) {
@@ -34,6 +36,8 @@ proptest! {
             cleanup_enabled,
             live_stream,
             show_overlay,
+            toggle_mode,
+            audio_feedback,
             max_recording_secs,
             n_threads,
             ..Config::default()
@@ -53,6 +57,8 @@ proptest! {
         prop_assert_eq!(loaded.cleanup_enabled, cfg.cleanup_enabled);
         prop_assert_eq!(loaded.live_stream, cfg.live_stream);
         prop_assert_eq!(loaded.show_overlay, cfg.show_overlay);
+        prop_assert_eq!(loaded.toggle_mode, cfg.toggle_mode);
+        prop_assert_eq!(loaded.audio_feedback, cfg.audio_feedback);
         prop_assert_eq!(loaded.max_recording_secs, cfg.max_recording_secs);
         prop_assert_eq!(loaded.n_threads, cfg.n_threads);
     }
@@ -70,6 +76,8 @@ proptest! {
         prop_assert_eq!(cfg.cleanup_enabled, true);
         prop_assert_eq!(cfg.live_stream, false);
         prop_assert_eq!(cfg.show_overlay, true);
+        prop_assert_eq!(cfg.toggle_mode, false);
+        prop_assert_eq!(cfg.audio_feedback, false);
         prop_assert_eq!(cfg.max_recording_secs, 120u32);
     }
 }

@@ -28,6 +28,10 @@ pub struct Config {
     pub live_stream: bool,
     #[serde(default = "default_show_overlay")]
     pub show_overlay: bool,
+    #[serde(default = "default_toggle_mode")]
+    pub toggle_mode: bool,
+    #[serde(default = "default_audio_feedback")]
+    pub audio_feedback: bool,
     #[serde(default = "default_ollama_model")]
     pub ollama_model: String,
     #[serde(default = "default_ollama_url")]
@@ -72,6 +76,27 @@ pub struct ProjectVocab {
     pub replacements: Vec<ReplacementEntry>,
 }
 
+/// Merged global + per-project dictionary used for a single transcription.
+#[derive(Debug, Default, Clone)]
+pub struct DictionarySnapshot {
+    pub terms: Vec<String>,
+    pub corrections: Vec<CorrectionEntry>,
+    pub replacements: Vec<ReplacementEntry>,
+}
+
+impl DictionarySnapshot {
+    /// Build a lookup map from lowercased pattern → canonical correction.
+    pub fn correction_map(&self) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        for entry in &self.corrections {
+            for pattern in &entry.patterns {
+                map.insert(pattern.to_lowercase(), entry.correct.clone());
+            }
+        }
+        map
+    }
+}
+
 fn default_hotkey() -> String {
     "Alt+Shift+D".to_string()
 }
@@ -98,6 +123,14 @@ fn default_live_stream() -> bool {
 
 fn default_show_overlay() -> bool {
     true
+}
+
+fn default_toggle_mode() -> bool {
+    false
+}
+
+fn default_audio_feedback() -> bool {
+    false
 }
 
 fn default_ollama_model() -> String {
@@ -134,6 +167,8 @@ impl Default for Config {
             cleanup_enabled: default_cleanup_enabled(),
             live_stream: default_live_stream(),
             show_overlay: default_show_overlay(),
+            toggle_mode: default_toggle_mode(),
+            audio_feedback: default_audio_feedback(),
             ollama_model: default_ollama_model(),
             ollama_url: default_ollama_url(),
             cleanup_prompt: default_cleanup_prompt(),
@@ -232,6 +267,8 @@ impl Config {
             "cleanup_enabled",
             "live_stream",
             "show_overlay",
+            "toggle_mode",
+            "audio_feedback",
             "ollama_model",
             "ollama_url",
             "cleanup_prompt",
@@ -258,46 +295,44 @@ impl Config {
         }
     }
 
-    /// Build the effective dictionary by merging the global dictionary with
-    /// any per-project terms.
-    pub fn effective_dictionary(&self) -> Vec<String> {
-        let mut dict = self.dictionary.clone();
+    /// Build a fresh merged dictionary snapshot from global config and the
+    /// current project's `.mist-dictionary.toml` (if any). Call this before
+    /// every transcription so edits to the project dictionary are picked up
+    /// without restarting the daemon.
+    pub fn dictionary_snapshot(&self) -> DictionarySnapshot {
         let project = Self::project_vocab();
+        let mut terms = self.dictionary.clone();
         for term in project.terms {
-            if !dict.contains(&term) {
-                dict.push(term);
+            if !terms.contains(&term) {
+                terms.push(term);
             }
         }
-        dict
+        let mut corrections = self.corrections.clone();
+        corrections.extend(project.corrections);
+        let mut replacements = self.replacements.clone();
+        replacements.extend(project.replacements);
+        DictionarySnapshot {
+            terms,
+            corrections,
+            replacements,
+        }
     }
 
     /// Build the effective corrections by merging global and per-project
     /// correction entries.
     pub fn effective_corrections(&self) -> Vec<CorrectionEntry> {
-        let mut corrections = self.corrections.clone();
-        let project = Self::project_vocab();
-        corrections.extend(project.corrections);
-        corrections
+        self.dictionary_snapshot().corrections
     }
 
     /// Build the effective replacements by merging global and per-project
     /// replacement entries.
     pub fn effective_replacements(&self) -> Vec<ReplacementEntry> {
-        let mut replacements = self.replacements.clone();
-        let project = Self::project_vocab();
-        replacements.extend(project.replacements);
-        replacements
+        self.dictionary_snapshot().replacements
     }
 
     /// Build a HashMap from lowercased pattern → canonical correction.
     pub fn correction_map(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        for entry in self.effective_corrections() {
-            for pattern in &entry.patterns {
-                map.insert(pattern.to_lowercase(), entry.correct.clone());
-            }
-        }
-        map
+        self.dictionary_snapshot().correction_map()
     }
 
     /// Add a word to the global dictionary if it is not already present.
@@ -437,6 +472,16 @@ impl Config {
         config.show_overlay = Confirm::new()
             .with_prompt("Show recording overlay?")
             .default(config.show_overlay)
+            .interact()?;
+
+        config.toggle_mode = Confirm::new()
+            .with_prompt("Use toggle mode (press once to start, again to stop)?")
+            .default(config.toggle_mode)
+            .interact()?;
+
+        config.audio_feedback = Confirm::new()
+            .with_prompt("Play audio feedback on start/stop?")
+            .default(config.audio_feedback)
             .interact()?;
 
         // Max recording duration

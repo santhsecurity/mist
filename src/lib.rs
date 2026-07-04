@@ -1,7 +1,9 @@
 pub mod audio;
+pub mod audio_feedback;
 pub mod cleanup;
 pub mod config;
 pub mod hotkey;
+pub mod icon;
 pub mod overlay;
 pub mod paste;
 pub mod stt;

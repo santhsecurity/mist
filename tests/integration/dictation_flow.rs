@@ -27,6 +27,7 @@ fn test_full_conceptual_flow() {
         n_threads: 4,
         corrections: Vec::new(),
         replacements: Vec::new(),
+        ..Config::default()
     };
 
     // Config → hotkey parses correctly

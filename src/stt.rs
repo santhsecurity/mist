@@ -1,9 +1,11 @@
-use anyhow::Result;
+use crate::config::DictionarySnapshot;
+use anyhow::{bail, Result};
+use directories::ProjectDirs;
 use log::info;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState,
 };
@@ -89,7 +91,7 @@ impl SttEngine {
         &mut self,
         samples: &[f32],
         language: &str,
-        dictionary: &[String],
+        snapshot: &DictionarySnapshot,
         n_threads: u32,
     ) -> Result<String> {
         let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
@@ -103,8 +105,8 @@ impl SttEngine {
 
         // Format dictionary terms as a natural sentence so Whisper treats
         // them as real vocabulary context rather than a meaningless list.
-        if !dictionary.is_empty() {
-            let prompt = format_dictionary_prompt(dictionary);
+        if !snapshot.terms.is_empty() {
+            let prompt = format_dictionary_prompt(&snapshot.terms);
             params.set_initial_prompt(&prompt);
         }
 
@@ -122,6 +124,68 @@ impl SttEngine {
 /// Formats dictionary terms as a natural sentence for Whisper's initial_prompt.
 /// This is significantly more effective than a bare comma-separated list because
 /// Whisper's decoder conditions on the prompt as if it were real preceding text.
+pub struct ModelInfo {
+    pub name: &'static str,
+    pub size_mb: u32,
+    pub installed: bool,
+}
+
+/// Whisper models Mist knows how to download from the official HuggingFace
+/// mirror. Sizes are approximate and only used for display.
+const KNOWN_MODELS: &[(&str, u32)] = &[
+    ("tiny.en", 75),
+    ("base.en", 142),
+    ("small.en", 466),
+    ("small.en-q5_0", 155),
+    ("medium.en", 1500),
+    ("medium.en-q5_0", 519),
+    ("large-v3-turbo-q5_0", 410),
+];
+
+/// List known models and whether each one is already downloaded.
+pub fn list_models() -> Vec<ModelInfo> {
+    KNOWN_MODELS
+        .iter()
+        .map(|(name, size_mb)| {
+            let installed = model_path(name).map(|p| p.exists()).unwrap_or(false);
+            ModelInfo {
+                name,
+                size_mb: *size_mb,
+                installed,
+            }
+        })
+        .collect()
+}
+
+fn model_path(name: &str) -> Result<PathBuf> {
+    let dirs = ProjectDirs::from("", "", "mist")
+        .ok_or_else(|| anyhow::anyhow!("Could not find data directory"))?;
+    Ok(dirs.data_dir().join(format!("ggml-{name}.bin")))
+}
+
+/// Download a named model to the standard data directory.
+pub fn download_model_by_name(name: &str) -> Result<()> {
+    if !KNOWN_MODELS.iter().any(|(n, _)| *n == name) {
+        bail!(
+            "Unknown model '{}'. Run 'mist model list' for available models.",
+            name
+        );
+    }
+    let path = model_path(name)?;
+    download_model(&path)
+}
+
+/// Delete a downloaded model.
+pub fn remove_model(name: &str) -> Result<()> {
+    let path = model_path(name)?;
+    if path.exists() {
+        fs::remove_file(&path)?;
+        Ok(())
+    } else {
+        bail!("Model '{}' is not installed.", name);
+    }
+}
+
 fn format_dictionary_prompt(terms: &[String]) -> String {
     match terms.len() {
         0 => String::new(),
@@ -145,7 +209,7 @@ fn format_dictionary_prompt(terms: &[String]) -> String {
     }
 }
 
-fn download_model(dest: &Path) -> Result<()> {
+pub fn download_model(dest: &Path) -> Result<()> {
     let model_name = dest
         .file_stem()
         .and_then(|s| s.to_str())

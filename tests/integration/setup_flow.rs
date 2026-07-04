@@ -59,6 +59,7 @@ fn test_config_roundtrips_through_toml() {
         n_threads: 8,
         corrections: Vec::new(),
         replacements: Vec::new(),
+        ..Config::default()
     };
 
     let toml = toml::to_string_pretty(&config).expect("config should serialize to TOML");
