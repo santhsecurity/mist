@@ -7,6 +7,10 @@ SERVICE_DIR="$HOME/.config/systemd/user"
 DATA_DIR="$HOME/.local/share/mist"
 CONFIG_DIR="$HOME/.config/mist"
 
+# Locate Cargo's target directory; it may be outside the repo (e.g. via
+# CARGO_TARGET_DIR). Fall back to the local target/ dir if metadata fails.
+TARGET_DIR="$(cd "$REPO_DIR" && cargo metadata --format-version=1 --no-deps 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])' 2>/dev/null || echo "$REPO_DIR/target")"
+
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 SESSION_TYPE="${XDG_SESSION_TYPE:-unknown}"
@@ -55,7 +59,7 @@ fi
 
 # Install binary
 mkdir -p "$BIN_DIR"
-cp "$REPO_DIR/target/release/mist" "$BIN_DIR/mist"
+cp "$TARGET_DIR/release/mist" "$BIN_DIR/mist"
 chmod +x "$BIN_DIR/mist"
 echo "✓ Installed mist to $BIN_DIR/mist"
 
@@ -131,7 +135,11 @@ echo "  mist                    # Run daemon"
 echo "  mist run                # Explicitly run daemon"
 echo "  mist setup              # Interactive configuration"
 echo "  mist status             # Show status"
+echo "  mist doctor             # Run environment diagnostics"
+echo "  mist logs               # Show recent daemon logs"
+echo "  mist model --help       # Manage Whisper models"
 echo "  mist dictionary --help  # Manage dictionary"
+echo "  mist screenshot         # Generate overlay screenshots"
 echo ""
 if command -v systemctl &>/dev/null; then
     echo "Enable auto-start:"
