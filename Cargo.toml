@@ -30,7 +30,6 @@ dialoguer = "0.11"
 directories = "6"
 global-hotkey = "0.6"
 notify-rust = "4"
-tray-icon = { version = "0.19", default-features = false }
 env_logger = "0.11"
 log = "0.4"
 regex = "1"
@@ -53,6 +52,13 @@ tiny-skia = "0.12.0"
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 enigo = "0.3"
+# Use default features on macOS/Windows (no libxdo link issue there).
+tray-icon = "0.19"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Avoid the libxdo link dependency on Linux; muda only needs it for global
+# shortcuts, which Mist does not use through the tray menu.
+tray-icon = { version = "0.19", default-features = false }
 
 [dev-dependencies]
 tempfile = "3"
