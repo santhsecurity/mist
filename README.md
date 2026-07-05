@@ -102,6 +102,7 @@ mist              # Run daemon (default)
 mist run          # Explicitly run daemon
 mist setup        # Interactive configuration
 mist status       # Show daemon status
+mist doctor       # Run environment diagnostics
 mist screenshot   # Generate overlay screenshots
 mist logs         # Show recent daemon logs
 mist model list

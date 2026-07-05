@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use cpal::traits::HostTrait;
 use mist::{config, overlay, paste, stt};
 use std::fs::OpenOptions;
 use std::path::PathBuf;
@@ -39,6 +40,8 @@ enum Commands {
         #[command(subcommand)]
         action: ModelAction,
     },
+    /// Run environment diagnostics
+    Doctor,
 }
 
 #[derive(Subcommand)]
@@ -79,6 +82,7 @@ pub fn run() -> Result<()> {
         Some(Commands::Screenshot { output }) => generate_screenshots(output),
         Some(Commands::Logs) => show_logs(),
         Some(Commands::Model { action }) => handle_model(action),
+        Some(Commands::Doctor) => show_doctor(),
         Some(Commands::Run) | None => crate::daemon::run(),
     }
 }
@@ -239,19 +243,108 @@ fn show_status() -> Result<()> {
     let typing_ok = paste::typing_backend_available();
 
     println!("Mist status");
-    println!("  Config path:   {:?}", config::Config::path()?);
-    println!("  Config exists: {}", config::Config::path()?.exists());
-    println!("  Data dir:      {:?}", data_dir);
-    println!("  Model:         {}", config.model);
-    println!("  Model file:    {:?}", config.model_path()?);
-    println!("  Model exists:  {}", config.model_path()?.exists());
-    println!("  Hotkey:        {}", config.hotkey);
-    println!("  Cleanup:       {}", config.cleanup_backend);
-    println!("  Overlay:       {}", config.show_overlay);
-    println!("  Live stream:   {}", config.live_stream);
+    println!("  Config path:     {:?}", config::Config::path()?);
+    println!("  Config exists:   {}", config::Config::path()?.exists());
+    println!("  Data dir:        {:?}", data_dir);
+    println!("  Model:           {}", config.model);
+    println!("  Model file:      {:?}", config.model_path()?);
+    println!("  Model exists:    {}", config.model_path()?.exists());
+    println!("  Hotkey:          {}", config.hotkey);
+    println!("  Cleanup:         {}", config.cleanup_backend);
+    println!("  Overlay:         {}", config.show_overlay);
+    println!("  Live stream:     {}", config.live_stream);
+    println!("  Toggle mode:     {}", config.toggle_mode);
+    println!("  Audio feedback:  {}", config.audio_feedback);
     println!(
-        "  Typing backend: {}",
+        "  Typing backend:  {}",
         if typing_ok { "ok" } else { "missing" }
     );
+    Ok(())
+}
+
+fn show_doctor() -> Result<()> {
+    let mut issues = Vec::new();
+
+    println!("Mist environment check");
+    println!();
+
+    // Config.
+    match config::Config::load() {
+        Ok(config) => {
+            println!("[ok] Config loads");
+
+            // Model.
+            match config.model_path() {
+                Ok(path) => {
+                    if path.exists() {
+                        println!("[ok] Model file exists: {:?}", path);
+                    } else {
+                        println!("[warn] Model file missing: {:?}", path);
+                        println!("       Run: mist model download {}", config.model);
+                        issues.push("model missing");
+                    }
+                }
+                Err(e) => {
+                    println!("[err] Model path error: {}", e);
+                    issues.push("model path");
+                }
+            }
+
+            // Hotkey parse.
+            if mist::hotkey::parse_hotkey(&config.hotkey).is_ok() {
+                println!("[ok] Hotkey parses: {}", config.hotkey);
+            } else {
+                println!("[err] Hotkey invalid: {}", config.hotkey);
+                issues.push("hotkey");
+            }
+
+            // Audio input.
+            let host = cpal::default_host();
+            match host.default_input_device() {
+                Some(_) => println!("[ok] Default input device available"),
+                None => {
+                    println!("[err] No default input device found");
+                    issues.push("input device");
+                }
+            }
+
+            // Audio output when feedback enabled.
+            if config.audio_feedback {
+                match host.default_output_device() {
+                    Some(_) => println!("[ok] Default output device available"),
+                    None => {
+                        println!("[warn] Audio feedback enabled but no output device found");
+                        issues.push("output device");
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            println!("[err] Config failed to load: {}", e);
+            issues.push("config");
+        }
+    }
+
+    // Typing backend.
+    if paste::typing_backend_available() {
+        println!("[ok] Typing backend available");
+    } else {
+        println!("[err] Typing backend missing");
+        #[cfg(target_os = "linux")]
+        println!("       Install one of: xdotool, wtype, ydotool");
+        #[cfg(target_os = "macos")]
+        println!("       Accessibility permissions may be required");
+        #[cfg(target_os = "windows")]
+        println!("       Enigo fallback should work; check permissions");
+        issues.push("typing backend");
+    }
+
+    println!();
+    if issues.is_empty() {
+        println!("No issues found.");
+    } else {
+        println!("Found {} issue(s): {}", issues.len(), issues.join(", "));
+        std::process::exit(1);
+    }
     Ok(())
 }
