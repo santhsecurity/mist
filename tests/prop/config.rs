@@ -69,8 +69,7 @@ proptest! {
         model in random_string(),
     ) {
         let toml = format!(
-            "hotkey = \"{}\"\nmodel = \"{}\"\n",
-            hotkey, model
+            "hotkey = \"{hotkey}\"\nmodel = \"{model}\"\n"
         );
         let cfg: Config = toml::from_str(&toml).unwrap();
         prop_assert_eq!(cfg.cleanup_enabled, true);

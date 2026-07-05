@@ -83,7 +83,7 @@ fn config_malformed_toml() {
     ];
     for s in &cases {
         let result: Result<Config, _> = toml::from_str(s);
-        assert!(result.is_err(), "should fail for: {}", s);
+        assert!(result.is_err(), "should fail for: {s}");
     }
 }
 
@@ -107,7 +107,7 @@ fn config_wrong_types() {
     ];
     for (toml, desc) in &cases {
         let result: Result<Config, _> = toml::from_str(toml);
-        assert!(result.is_err(), "should fail for {}: {}", desc, toml);
+        assert!(result.is_err(), "should fail for {desc}: {toml}");
     }
 }
 

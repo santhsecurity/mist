@@ -12,6 +12,7 @@ use strsim::jaro_winkler;
 /// For each word in the text, checks if it matches any correction pattern
 /// either exactly (case-insensitive) or via fuzzy matching (Jaro-Winkler
 /// similarity ≥ 0.88). Replaces the word with the canonical spelling.
+#[must_use]
 pub fn apply(text: &str, config: &Config) -> String {
     if config.corrections.is_empty() {
         return text.to_string();

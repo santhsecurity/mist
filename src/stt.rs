@@ -10,7 +10,7 @@ use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperState,
 };
 
-/// Known SHA-256 checksums for official ggml Whisper models from HuggingFace.
+/// Known SHA-256 checksums for official ggml Whisper models from `HuggingFace`.
 /// If the model is not in this list (custom download), we skip verification.
 const MODEL_CHECKSUMS: &[(&str, &str)] = &[
     (
@@ -38,7 +38,7 @@ pub struct SttEngine {
 impl SttEngine {
     pub fn new(model_path: &Path) -> Result<Self> {
         if !model_path.exists() {
-            info!("Model not found at {:?}. Downloading...", model_path);
+            info!("Model not found at {model_path:?}. Downloading...");
             download_model(model_path)?;
         }
 
@@ -60,7 +60,7 @@ impl SttEngine {
 
         let ctx = WhisperContext::new_with_params(
             model_path.to_str().ok_or_else(|| {
-                anyhow::anyhow!("Model path contains invalid UTF-8: {:?}", model_path)
+                anyhow::anyhow!("Model path contains invalid UTF-8: {model_path:?}")
             })?,
             params,
         )?;
@@ -121,7 +121,7 @@ impl SttEngine {
     }
 }
 
-/// Formats dictionary terms as a natural sentence for Whisper's initial_prompt.
+/// Formats dictionary terms as a natural sentence for Whisper's `initial_prompt`.
 /// This is significantly more effective than a bare comma-separated list because
 /// Whisper's decoder conditions on the prompt as if it were real preceding text.
 pub struct ModelInfo {
@@ -130,7 +130,7 @@ pub struct ModelInfo {
     pub installed: bool,
 }
 
-/// Whisper models Mist knows how to download from the official HuggingFace
+/// Whisper models Mist knows how to download from the official `HuggingFace`
 /// mirror. Sizes are approximate and only used for display.
 const KNOWN_MODELS: &[(&str, u32)] = &[
     ("tiny.en", 75),
@@ -143,11 +143,12 @@ const KNOWN_MODELS: &[(&str, u32)] = &[
 ];
 
 /// List known models and whether each one is already downloaded.
+#[must_use]
 pub fn list_models() -> Vec<ModelInfo> {
     KNOWN_MODELS
         .iter()
         .map(|(name, size_mb)| {
-            let installed = model_path(name).map(|p| p.exists()).unwrap_or(false);
+            let installed = model_path(name).is_ok_and(|p| p.exists());
             ModelInfo {
                 name,
                 size_mb: *size_mb,
@@ -167,8 +168,7 @@ pub fn model_path(name: &str) -> Result<PathBuf> {
 pub fn download_model_by_name(name: &str) -> Result<()> {
     if !KNOWN_MODELS.iter().any(|(n, _)| *n == name) {
         bail!(
-            "Unknown model '{}'. Run 'mist model list' for available models.",
-            name
+            "Unknown model '{name}'. Run 'mist model list' for available models."
         );
     }
     let path = model_path(name)?;
@@ -182,7 +182,7 @@ pub fn remove_model(name: &str) -> Result<()> {
         fs::remove_file(&path)?;
         Ok(())
     } else {
-        bail!("Model '{}' is not installed.", name);
+        bail!("Model '{name}' is not installed.");
     }
 }
 
@@ -198,7 +198,7 @@ fn format_dictionary_prompt(terms: &[String]) -> String {
             let last = &terms[terms.len() - 1];
             let rest: Vec<&str> = terms[..terms.len() - 1]
                 .iter()
-                .map(|s| s.as_str())
+                .map(std::string::String::as_str)
                 .collect();
             format!(
                 "This dictation may include terms like {}, and {}.",
@@ -216,11 +216,10 @@ pub fn download_model(dest: &Path) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Invalid model path"))?;
 
     let url = format!(
-        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}.bin",
-        model_name
+        "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{model_name}.bin"
     );
 
-    info!("Downloading {} from HuggingFace...", model_name);
+    info!("Downloading {model_name} from HuggingFace...");
     let parent = dest
         .parent()
         .ok_or_else(|| anyhow::anyhow!("model destination has no parent directory"))?;
@@ -276,11 +275,8 @@ pub fn download_model(dest: &Path) -> Result<()> {
         if hash != *expected {
             let _ = fs::remove_file(&tmp_path);
             anyhow::bail!(
-                "SHA-256 mismatch for {}! Expected {}, got {}. \
-                 The download may be corrupt. Please retry.",
-                model_name,
-                expected,
-                hash
+                "SHA-256 mismatch for {model_name}! Expected {expected}, got {hash}. \
+                 The download may be corrupt. Please retry."
             );
         }
         info!("SHA-256 verified: {}", &hash[..16]);
@@ -288,7 +284,7 @@ pub fn download_model(dest: &Path) -> Result<()> {
 
     // Atomic rename from .part to final path.
     fs::rename(&tmp_path, dest)?;
-    info!("Model saved to {:?}", dest);
+    info!("Model saved to {dest:?}");
     Ok(())
 }
 

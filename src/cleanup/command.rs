@@ -42,32 +42,28 @@ pub fn cleanup(text: &str, config: &Config) -> Result<String> {
     // Wait with timeout - spawn a thread to wait, and kill if it takes too long.
     let start = std::time::Instant::now();
     loop {
-        match child.try_wait()? {
-            Some(status) => {
-                let output = child.wait_with_output()?;
-                if !status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    anyhow::bail!(
-                        "Cleanup command failed (exit {}): {}",
-                        status.code().unwrap_or(-1),
-                        stderr.trim()
-                    );
-                }
-                return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+        if let Some(status) = child.try_wait()? {
+            let output = child.wait_with_output()?;
+            if !status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                anyhow::bail!(
+                    "Cleanup command failed (exit {}): {}",
+                    status.code().unwrap_or(-1),
+                    stderr.trim()
+                );
             }
-            None => {
-                if start.elapsed() > COMMAND_TIMEOUT {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    anyhow::bail!(
-                        "Cleanup command timed out after {}s and was killed. \
-                         Command: {}",
-                        COMMAND_TIMEOUT.as_secs(),
-                        config.cleanup_command
-                    );
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
+            return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
         }
+        if start.elapsed() > COMMAND_TIMEOUT {
+            let _ = child.kill();
+            let _ = child.wait();
+            anyhow::bail!(
+                "Cleanup command timed out after {}s and was killed. \
+                 Command: {}",
+                COMMAND_TIMEOUT.as_secs(),
+                config.cleanup_command
+            );
+        }
+        std::thread::sleep(Duration::from_millis(50));
     }
 }

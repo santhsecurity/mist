@@ -63,7 +63,7 @@ fn mock_ollama_server_status(status: &str, body: String) -> String {
     });
 
     std::thread::sleep(std::time::Duration::from_millis(50));
-    format!("http://127.0.0.1:{}", port)
+    format!("http://127.0.0.1:{port}")
 }
 
 #[test]
@@ -105,9 +105,7 @@ fn command_cleanup_hangs() {
     let elapsed = start.elapsed();
     assert!(
         elapsed >= std::time::Duration::from_secs(1),
-        "expected cleanup to block for at least 1s, got result {:?} in {:?}",
-        result,
-        elapsed
+        "expected cleanup to block for at least 1s, got result {result:?} in {elapsed:?}"
     );
 }
 
@@ -115,7 +113,7 @@ fn command_cleanup_hangs() {
 fn command_cleanup_binary_output() {
     // Use octal escapes (POSIX sh compatible) to output actual binary bytes
     let result = run_command_cleanup("test", "printf '\\0\\001\\002\\377'");
-    assert!(result.is_ok(), "should handle binary output: {:?}", result);
+    assert!(result.is_ok(), "should handle binary output: {result:?}");
     let text = result.unwrap();
     assert!(!text.is_empty());
 }
@@ -137,7 +135,7 @@ fn ollama_cleanup_server_error() {
 
 #[test]
 fn ollama_cleanup_invalid_json() {
-    let body = r#"not json at all"#.to_string();
+    let body = r"not json at all".to_string();
     let url = helpers::mock_ollama_server(body);
 
     let result = run_ollama_cleanup("test", &url, "test");
@@ -157,7 +155,7 @@ fn ollama_cleanup_empty_response() {
 #[test]
 fn ollama_cleanup_huge_response() {
     let huge = "x".repeat(100_000);
-    let body = format!(r#"{{"response":"{}"}}"#, huge);
+    let body = format!(r#"{{"response":"{huge}"}}"#);
     let url = helpers::mock_ollama_server(body);
 
     let result = run_ollama_cleanup("test", &url, "test");

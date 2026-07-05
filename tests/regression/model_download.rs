@@ -40,7 +40,6 @@ fn test_model_path_resolution_directory_structure() {
     let path_str = path.to_string_lossy();
     assert!(
         path_str.contains("mist"),
-        "Model path should be inside the mist data directory: {}",
-        path_str
+        "Model path should be inside the mist data directory: {path_str}"
     );
 }

@@ -2,7 +2,7 @@ use anyhow::Result;
 use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 
 pub fn parse_hotkey(s: &str) -> Result<HotKey> {
-    let parts: Vec<&str> = s.split('+').map(|p| p.trim()).collect();
+    let parts: Vec<&str> = s.split('+').map(str::trim).collect();
     let mut modifiers = Modifiers::empty();
     let mut key: Option<Code> = None;
 
@@ -78,6 +78,6 @@ pub fn parse_hotkey(s: &str) -> Result<HotKey> {
         }
     }
 
-    let key = key.ok_or_else(|| anyhow::anyhow!("Invalid hotkey: {}", s))?;
+    let key = key.ok_or_else(|| anyhow::anyhow!("Invalid hotkey: {s}"))?;
     Ok(HotKey::new(Some(modifiers), key))
 }

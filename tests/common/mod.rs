@@ -5,7 +5,7 @@ use std::net::TcpListener;
 use std::thread;
 
 /// Spawn a tiny HTTP server on a random port that serves a single response.
-/// Returns the base URL (e.g. "http://127.0.0.1:12345").
+/// Returns the base URL (e.g. "<http://127.0.0.1:12345>").
 pub fn mock_ollama_server(response_body: String) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -35,7 +35,7 @@ pub fn mock_ollama_server(response_body: String) -> String {
     });
 
     std::thread::sleep(std::time::Duration::from_millis(50));
-    format!("http://127.0.0.1:{}", port)
+    format!("http://127.0.0.1:{port}")
 }
 
 /// Generate a short synthetic audio buffer (silence + a sine wave burst).
@@ -54,10 +54,10 @@ pub fn synthetic_audio(sample_rate: u32, duration_secs: f32) -> Vec<f32> {
 /// Generate a valid TOML config string with custom fields.
 pub fn config_toml(hotkey: &str, model: &str, backend: &str) -> String {
     format!(
-        r#"hotkey = "{}"
-model = "{}"
+        r#"hotkey = "{hotkey}"
+model = "{model}"
 language = "en"
-cleanup_backend = "{}"
+cleanup_backend = "{backend}"
 cleanup_enabled = true
 live_stream = false
 ollama_model = "qwen3:0.6b"
@@ -65,7 +65,6 @@ ollama_url = "http://localhost:11434"
 cleanup_prompt = "Clean up this text."
 cleanup_command = ""
 dictionary = ["Rust", "LLM"]
-"#,
-        hotkey, model, backend
+"#
     )
 }

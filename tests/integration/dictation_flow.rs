@@ -40,7 +40,7 @@ fn test_full_conceptual_flow() {
 
     // Try to start recording; skip if no device is present
     if let Err(e) = recorder.start() {
-        eprintln!("No audio device available, skipping recording start: {}", e);
+        eprintln!("No audio device available, skipping recording start: {e}");
     } else {
         let _samples = recorder.stop().expect("stop should succeed after start");
     }
@@ -81,7 +81,7 @@ fn test_config_cleanup_integration() {
     assert_eq!(result.unwrap(), "test text");
 }
 
-/// AudioRecorder can be instantiated. Recording is skipped when no audio device exists.
+/// `AudioRecorder` can be instantiated. Recording is skipped when no audio device exists.
 #[test]
 fn test_audio_recorder_can_be_instantiated() {
     let recorder = AudioRecorder::new(120);
@@ -89,7 +89,7 @@ fn test_audio_recorder_can_be_instantiated() {
 
     if let Ok(mut rec) = recorder {
         if let Err(e) = rec.start() {
-            eprintln!("No audio device available, skipping start/stop: {}", e);
+            eprintln!("No audio device available, skipping start/stop: {e}");
             return;
         }
         let samples = rec.stop();
@@ -97,7 +97,7 @@ fn test_audio_recorder_can_be_instantiated() {
     }
 }
 
-/// SttEngine must return an error (not panic) when the model file is missing/invalid.
+/// `SttEngine` must return an error (not panic) when the model file is missing/invalid.
 #[test]
 fn test_stt_engine_reports_error_on_invalid_model() {
     let tmp = tempfile::tempdir().unwrap();

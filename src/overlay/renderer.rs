@@ -24,6 +24,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    #[must_use]
     pub fn new(width: u32, height: u32) -> Self {
         Self {
             width,
@@ -35,15 +36,18 @@ impl Renderer {
         }
     }
 
+    #[must_use]
     pub fn with_font(mut self, font: Option<fontdue::Font>) -> Self {
         self.font = font;
         self
     }
 
+    #[must_use]
     pub fn width(&self) -> u32 {
         self.width
     }
 
+    #[must_use]
     pub fn height(&self) -> u32 {
         self.height
     }
@@ -151,9 +155,9 @@ fn pixmap_to_rgba(pixmap: &Pixmap) -> Vec<u8> {
         if a == 0 {
             out.extend_from_slice(&[0, 0, 0, 0]);
         } else {
-            let r = ((chunk[0] as u16 * 255) / a as u16) as u8;
-            let g = ((chunk[1] as u16 * 255) / a as u16) as u8;
-            let b = ((chunk[2] as u16 * 255) / a as u16) as u8;
+            let r = ((u16::from(chunk[0]) * 255) / u16::from(a)) as u8;
+            let g = ((u16::from(chunk[1]) * 255) / u16::from(a)) as u8;
+            let b = ((u16::from(chunk[2]) * 255) / u16::from(a)) as u8;
             out.extend_from_slice(&[r, g, b, a]);
         }
     }
@@ -194,8 +198,7 @@ fn draw_text_rgba(
 
     let ascent = font
         .horizontal_line_metrics(px2)
-        .map(|m| m.ascent)
-        .unwrap_or(px2 * 0.75);
+        .map_or(px2 * 0.75, |m| m.ascent);
     // Center the cap height in the capsule.
     let baseline2 = ((height as f32 * scale + ascent) / 2.0 - 4.0) as i32;
 
@@ -249,10 +252,10 @@ fn draw_text_rgba(
         for tx in 0..width {
             let sx = tx as usize * scale as usize;
             let sy = ty as usize * scale as usize;
-            let a = (mask[sy * width2 + sx] as u32
-                + mask[sy * width2 + sx + 1] as u32
-                + mask[(sy + 1) * width2 + sx] as u32
-                + mask[(sy + 1) * width2 + sx + 1] as u32)
+            let a = (u32::from(mask[sy * width2 + sx])
+                + u32::from(mask[sy * width2 + sx + 1])
+                + u32::from(mask[(sy + 1) * width2 + sx])
+                + u32::from(mask[(sy + 1) * width2 + sx + 1]))
                 / 4;
             if a == 0 {
                 continue;
@@ -260,10 +263,10 @@ fn draw_text_rgba(
             let alpha = a as f32 / 255.0;
             let idx = ((ty * width + tx) * 4) as usize;
             let inv = 1.0 - alpha;
-            buffer[idx] = (255.0 * alpha + buffer[idx] as f32 * inv) as u8;
-            buffer[idx + 1] = (255.0 * alpha + buffer[idx + 1] as f32 * inv) as u8;
-            buffer[idx + 2] = (255.0 * alpha + buffer[idx + 2] as f32 * inv) as u8;
-            let old_a = buffer[idx + 3] as f32 / 255.0;
+            buffer[idx] = (255.0 * alpha + f32::from(buffer[idx]) * inv) as u8;
+            buffer[idx + 1] = (255.0 * alpha + f32::from(buffer[idx + 1]) * inv) as u8;
+            buffer[idx + 2] = (255.0 * alpha + f32::from(buffer[idx + 2]) * inv) as u8;
+            let old_a = f32::from(buffer[idx + 3]) / 255.0;
             let new_a = alpha + old_a * inv;
             buffer[idx + 3] = (new_a * 255.0) as u8;
         }
@@ -289,7 +292,7 @@ fn blit_glyph_mask(
             if px < 0 || px >= width as i32 || py < 0 || py >= height as i32 {
                 continue;
             }
-            let alpha = (bitmap[row * w + col] as f32 * alpha_mul) as u8;
+            let alpha = (f32::from(bitmap[row * w + col]) * alpha_mul) as u8;
             let idx = (py as u32 * width + px as u32) as usize;
             if alpha > mask[idx] {
                 mask[idx] = alpha;
@@ -341,6 +344,7 @@ fn load_font() -> Option<fontdue::Font> {
 }
 
 /// Kept for API compatibility with the audio preview path.
+#[must_use]
 pub fn waveform_from_samples(samples: &[f32], target_len: usize) -> Vec<f32> {
     if samples.is_empty() || target_len == 0 {
         return vec![0.0; target_len];

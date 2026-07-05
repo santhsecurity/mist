@@ -25,7 +25,7 @@ struct Leaked {
 fn leak_window_and_context(window: Window) -> Result<Leaked> {
     let window: &'static Window = Box::leak(Box::new(window));
     let context = softbuffer::Context::new(window)
-        .map_err(|e| anyhow::anyhow!("softbuffer context: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("softbuffer context: {e}"))?;
     let context: &'static softbuffer::Context<&'static Window> = Box::leak(Box::new(context));
     Ok(Leaked { window, context })
 }
@@ -38,7 +38,7 @@ impl Overlay {
             .with_decorations(false)
             .with_always_on_top(true)
             .with_visible(false)
-            .with_inner_size(LogicalSize::new(width as f64, height as f64))
+            .with_inner_size(LogicalSize::new(f64::from(width), f64::from(height)))
             .with_transparent(true)
             .with_resizable(false)
             .with_title("Mist")
@@ -46,7 +46,7 @@ impl Overlay {
 
         let leaked = leak_window_and_context(window)?;
         let surface = softbuffer::Surface::new(leaked.context, leaked.window)
-            .map_err(|e| anyhow::anyhow!("softbuffer surface: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("softbuffer surface: {e}"))?;
 
         let window_ref: &Window = leaked.window;
 
@@ -126,8 +126,7 @@ impl Overlay {
 
     pub fn should_dismiss(&self) -> bool {
         self.show_until
-            .map(|t| Instant::now() >= t)
-            .unwrap_or(false)
+            .is_some_and(|t| Instant::now() >= t)
     }
 
     pub fn draw(&mut self) -> Result<()> {
@@ -153,11 +152,11 @@ impl Overlay {
         let h_nz = NonZeroU32::new(height).unwrap();
         self.surface
             .resize(w_nz, h_nz)
-            .map_err(|e| anyhow::anyhow!("resize: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("resize: {e}"))?;
         let mut sb = self
             .surface
             .buffer_mut()
-            .map_err(|e| anyhow::anyhow!("buffer: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("buffer: {e}"))?;
 
         // Convert unpremultiplied RGBA to 0x00RRGGBB for softbuffer.
         // softbuffer does not support per-pixel alpha; 0 is transparent,
@@ -168,13 +167,13 @@ impl Overlay {
                 if c[3] == 0 {
                     0
                 } else {
-                    ((c[0] as u32) << 16) | ((c[1] as u32) << 8) | (c[2] as u32)
+                    (u32::from(c[0]) << 16) | (u32::from(c[1]) << 8) | u32::from(c[2])
                 }
             })
             .collect();
         sb.copy_from_slice(&u32_buf);
         sb.present()
-            .map_err(|e| anyhow::anyhow!("present: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("present: {e}"))?;
         Ok(())
     }
 }

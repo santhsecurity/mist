@@ -30,18 +30,21 @@ impl AudioRecorder {
         })
     }
 
+    #[must_use]
     pub fn buffer(&self) -> Arc<Mutex<Vec<f32>>> {
         self.samples.clone()
     }
 
     /// Returns true if the recording was stopped because it hit the maximum
     /// duration cap.
+    #[must_use]
     pub fn was_capped(&self) -> bool {
         self.capped.load(Ordering::Relaxed)
     }
 
     /// Number of audio samples captured since `start()` was called. Useful for
     /// detecting mic permission failures or disconnected devices.
+    #[must_use]
     pub fn samples_received(&self) -> usize {
         self.samples_received.load(Ordering::Relaxed)
     }
@@ -54,7 +57,7 @@ impl AudioRecorder {
 
         let config = device
             .default_input_config()
-            .map_err(|e| anyhow::anyhow!("No default input config: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("No default input config: {e}"))?;
 
         let sample_format = config.sample_format();
         let sample_rate = config.sample_rate().0;
@@ -66,7 +69,7 @@ impl AudioRecorder {
         let max = self.max_samples;
         let capped = self.capped.clone();
         let received = self.samples_received.clone();
-        let err_fn = |err| warn!("Audio stream error: {}", err);
+        let err_fn = |err| warn!("Audio stream error: {err}");
 
         let stream = match sample_format {
             cpal::SampleFormat::F32 => device.build_input_stream(
@@ -108,7 +111,7 @@ impl AudioRecorder {
                             let n = data.len().min(remaining);
                             received.fetch_add(n, Ordering::Relaxed);
                             for &s in &data[..n] {
-                                buf.push(s as f32 / 32768.0);
+                                buf.push(f32::from(s) / 32768.0);
                             }
                         }
                     },
@@ -136,7 +139,7 @@ impl AudioRecorder {
                             received.fetch_add(n, Ordering::Relaxed);
                             for &s in &data[..n] {
                                 // Correct U16→f32: map [0, 65535] → [-1.0, 1.0]
-                                buf.push((s as f32 / 32767.5) - 1.0);
+                                buf.push((f32::from(s) / 32767.5) - 1.0);
                             }
                         }
                     },
@@ -144,7 +147,7 @@ impl AudioRecorder {
                     None,
                 )?
             }
-            _ => anyhow::bail!("Unsupported sample format: {:?}", sample_format),
+            _ => anyhow::bail!("Unsupported sample format: {sample_format:?}"),
         };
 
         stream.play()?;
@@ -158,14 +161,14 @@ impl AudioRecorder {
             let mut buf = self
                 .samples
                 .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             std::mem::take(&mut *buf)
         };
 
-        let resampled = if self.sample_rate != 16000 {
-            resample(&samples, self.sample_rate, 16000)?
-        } else {
+        let resampled = if self.sample_rate == 16000 {
             samples
+        } else {
+            resample(&samples, self.sample_rate, 16000)?
         };
 
         // Trim leading/trailing silence via energy-threshold VAD.
@@ -231,10 +234,10 @@ fn resample(input: &[f32], from_rate: u32, to_rate: u32) -> Result<Vec<f32>> {
         window: WindowFunction::BlackmanHarris2,
     };
 
-    let ratio = to_rate as f64 / from_rate as f64;
+    let ratio = f64::from(to_rate) / f64::from(from_rate);
     let mut resampler = SincFixedIn::<f64>::new(ratio, 1.0, params, input.len(), 1)?;
 
-    let input_f64: Vec<f64> = input.iter().map(|&s| s as f64).collect();
+    let input_f64: Vec<f64> = input.iter().map(|&s| f64::from(s)).collect();
     let waves_out = resampler.process(&[input_f64], None)?;
     Ok(waves_out[0].iter().map(|&s| s as f32).collect())
 }

@@ -73,7 +73,7 @@ fn test_command_cleanup_with_valid_echo_command() {
 fn test_command_cleanup_with_empty_command_fails() {
     let config = Config {
         cleanup_backend: "command".to_string(),
-        cleanup_command: "".to_string(),
+        cleanup_command: String::new(),
         ..Config::default()
     };
     let result = cleanup("text", &config);

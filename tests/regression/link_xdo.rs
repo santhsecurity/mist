@@ -20,13 +20,11 @@ fn test_paste_on_linux_uses_xdo_tools_not_enigo() {
             let err = e.to_string();
             assert!(
                 err.contains("xdotool") || err.contains("wtype") || err.contains("ydotool"),
-                "Error should reference Linux typing tools, not enigo. Got: {}",
-                err
+                "Error should reference Linux typing tools, not enigo. Got: {err}"
             );
             assert!(
                 !err.to_lowercase().contains("enigo"),
-                "Error should not mention enigo on Linux. Got: {}",
-                err
+                "Error should not mention enigo on Linux. Got: {err}"
             );
         }
     }

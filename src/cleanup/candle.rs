@@ -22,11 +22,11 @@ impl CandleEngine {
         let device = Device::Cpu;
         let mut file = std::fs::File::open(model_path)?;
         let model_content = gguf_file::Content::read(&mut file)
-            .map_err(|e| anyhow::anyhow!("Failed to read GGUF: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to read GGUF: {e}"))?;
         let model = Qwen2::from_gguf(model_content, &mut file, &device)
-            .map_err(|e| anyhow::anyhow!("Failed to load model: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to load model: {e}"))?;
         let tokenizer = Tokenizer::from_file(tokenizer_path)
-            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to load tokenizer: {e}"))?;
         Ok(Self {
             model,
             tokenizer,
@@ -108,11 +108,11 @@ pub fn cleanup(text: &str, config: &Config) -> Result<String> {
 
     let engine = ENGINE.get_or_init(|| match CandleEngine::new(&model_path, &tokenizer_path) {
         Ok(e) => Mutex::new(Ok(e)),
-        Err(e) => Mutex::new(Err(format!("Candle engine init failed: {}", e))),
+        Err(e) => Mutex::new(Err(format!("Candle engine init failed: {e}"))),
     });
 
     let mut guard = engine.lock().unwrap();
-    let engine_ref = guard.as_mut().map_err(|e| anyhow::anyhow!("{}", e))?;
+    let engine_ref = guard.as_mut().map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let prompt = format!(
         "<|im_start|>user\n{}\n\nText:\n{}<|im_end|>\n<|im_start|>assistant\n",
@@ -157,7 +157,7 @@ fn download_verified(
 
     let parent = dest
         .parent()
-        .ok_or_else(|| anyhow::anyhow!("{} destination has no parent directory", label))?;
+        .ok_or_else(|| anyhow::anyhow!("{label} destination has no parent directory"))?;
     std::fs::create_dir_all(parent)?;
 
     let response = ureq::get(url)
@@ -214,11 +214,8 @@ fn download_verified(
         if hash != expected {
             let _ = std::fs::remove_file(&tmp_path);
             anyhow::bail!(
-                "SHA-256 mismatch for {}! Expected {}, got {}. \
-                 The download may be corrupt. Please retry.",
-                label,
-                expected,
-                hash
+                "SHA-256 mismatch for {label}! Expected {expected}, got {hash}. \
+                 The download may be corrupt. Please retry."
             );
         }
         info!("{} SHA-256 verified: {}", label, &hash[..16]);
@@ -228,6 +225,6 @@ fn download_verified(
 
     // Atomic rename from .part to final path.
     std::fs::rename(&tmp_path, dest)?;
-    info!("{} saved to {:?}", label, dest);
+    info!("{label} saved to {dest:?}");
     Ok(())
 }

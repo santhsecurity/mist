@@ -13,6 +13,7 @@ enum LinuxTypingBackend {
 }
 
 /// Returns whether a typing backend is available on this platform.
+#[must_use]
 pub fn typing_backend_available() -> bool {
     #[cfg(target_os = "linux")]
     {
@@ -61,11 +62,10 @@ fn detect_linux_backend() -> Option<LinuxTypingBackend> {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
+            .is_ok_and(|s| s.success())
         {
             let server = if wayland { "Wayland" } else { "X11" };
-            info!("Detected {} session, using {} for text input", server, cmd);
+            info!("Detected {server} session, using {cmd} for text input");
             return Some(*backend);
         }
     }
@@ -117,14 +117,14 @@ fn type_linux(text: &str) -> Result<()> {
             if status.success() {
                 return Ok(());
             }
-            anyhow::bail!("xdotool exited with status {}", status);
+            anyhow::bail!("xdotool exited with status {status}");
         }
         Some(LinuxTypingBackend::Wtype) => {
             let status = std::process::Command::new("wtype").arg(text).status()?;
             if status.success() {
                 return Ok(());
             }
-            anyhow::bail!("wtype exited with status {}", status);
+            anyhow::bail!("wtype exited with status {status}");
         }
         Some(LinuxTypingBackend::Ydotool) => {
             let status = std::process::Command::new("ydotool")
@@ -133,15 +133,14 @@ fn type_linux(text: &str) -> Result<()> {
             if status.success() {
                 return Ok(());
             }
-            anyhow::bail!("ydotool exited with status {}", status);
+            anyhow::bail!("ydotool exited with status {status}");
         }
         None => {
             let session_type =
                 std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| "unknown".into());
             anyhow::bail!(
-                "No typing tool available for {} session. \
-                 Install xdotool (X11), wtype (Wayland), or ydotool (either).",
-                session_type
+                "No typing tool available for {session_type} session. \
+                 Install xdotool (X11), wtype (Wayland), or ydotool (either)."
             );
         }
     }

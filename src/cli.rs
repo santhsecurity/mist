@@ -142,7 +142,7 @@ fn generate_screenshots(output: Option<PathBuf>) -> Result<()> {
     renderer.set_text("Deploy to Kubernetes.");
     save_overlay_png(&mut renderer, &dir.join("done.png"))?;
 
-    println!("Screenshots saved to {:?}", dir);
+    println!("Screenshots saved to {dir:?}");
     Ok(())
 }
 
@@ -163,17 +163,17 @@ fn handle_dictionary(action: DictAction) -> Result<()> {
         DictAction::Add { word } => {
             if config.add_dictionary_word(&word) {
                 config.save()?;
-                println!("Added '{}' to dictionary.", word);
+                println!("Added '{word}' to dictionary.");
             } else {
-                println!("'{}' is already in the dictionary.", word);
+                println!("'{word}' is already in the dictionary.");
             }
         }
         DictAction::Remove { word } => {
             if config.remove_dictionary_word(&word) {
                 config.save()?;
-                println!("Removed '{}' from dictionary.", word);
+                println!("Removed '{word}' from dictionary.");
             } else {
-                println!("'{}' is not in the dictionary.", word);
+                println!("'{word}' is not in the dictionary.");
             }
         }
         DictAction::List => {
@@ -184,11 +184,11 @@ fn handle_dictionary(action: DictAction) -> Result<()> {
         DictAction::Import { path } => {
             config.import_dictionary(&path)?;
             config.save()?;
-            println!("Imported dictionary from {:?}.", path);
+            println!("Imported dictionary from {path:?}.");
         }
         DictAction::Export { path } => {
             config.export_dictionary(&path)?;
-            println!("Exported dictionary to {:?}.", path);
+            println!("Exported dictionary to {path:?}.");
         }
     }
     Ok(())
@@ -207,11 +207,11 @@ fn handle_model(action: ModelAction) -> Result<()> {
         }
         ModelAction::Download { name } => {
             stt::download_model_by_name(&name)?;
-            println!("Downloaded model '{}'.", name);
+            println!("Downloaded model '{name}'.");
         }
         ModelAction::Remove { name } => {
             stt::remove_model(&name)?;
-            println!("Removed model '{}'.", name);
+            println!("Removed model '{name}'.");
         }
     }
     Ok(())
@@ -224,14 +224,14 @@ fn show_logs() -> Result<()> {
         anyhow::bail!("Could not determine project data directory.");
     };
     if !path.exists() {
-        println!("No log file found at {:?}", path);
+        println!("No log file found at {path:?}");
         return Ok(());
     }
     let contents = std::fs::read_to_string(&path)?;
     let lines: Vec<&str> = contents.lines().collect();
     let tail = lines.iter().rev().take(200).rev().copied().collect::<Vec<_>>();
     for line in tail {
-        println!("{}", line);
+        println!("{line}");
     }
     Ok(())
 }
@@ -245,7 +245,7 @@ fn show_status() -> Result<()> {
     println!("Mist status");
     println!("  Config path:     {:?}", config::Config::path()?);
     println!("  Config exists:   {}", config::Config::path()?.exists());
-    println!("  Data dir:        {:?}", data_dir);
+    println!("  Data dir:        {data_dir:?}");
     println!("  Model:           {}", config.model);
     println!("  Model file:      {:?}", config.model_path()?);
     println!("  Model exists:    {}", config.model_path()?.exists());
@@ -277,15 +277,15 @@ fn show_doctor() -> Result<()> {
             match config.model_path() {
                 Ok(path) => {
                     if path.exists() {
-                        println!("[ok] Model file exists: {:?}", path);
+                        println!("[ok] Model file exists: {path:?}");
                     } else {
-                        println!("[warn] Model file missing: {:?}", path);
+                        println!("[warn] Model file missing: {path:?}");
                         println!("       Run: mist model download {}", config.model);
                         issues.push("model missing");
                     }
                 }
                 Err(e) => {
-                    println!("[err] Model path error: {}", e);
+                    println!("[err] Model path error: {e}");
                     issues.push("model path");
                 }
             }
@@ -300,27 +300,25 @@ fn show_doctor() -> Result<()> {
 
             // Audio input.
             let host = cpal::default_host();
-            match host.default_input_device() {
-                Some(_) => println!("[ok] Default input device available"),
-                None => {
-                    println!("[err] No default input device found");
-                    issues.push("input device");
-                }
+            if host.default_input_device().is_some() {
+                println!("[ok] Default input device available");
+            } else {
+                println!("[err] No default input device found");
+                issues.push("input device");
             }
 
             // Audio output when feedback enabled.
             if config.audio_feedback {
-                match host.default_output_device() {
-                    Some(_) => println!("[ok] Default output device available"),
-                    None => {
-                        println!("[warn] Audio feedback enabled but no output device found");
-                        issues.push("output device");
-                    }
+                if host.default_output_device().is_some() {
+                    println!("[ok] Default output device available");
+                } else {
+                    println!("[warn] Audio feedback enabled but no output device found");
+                    issues.push("output device");
                 }
             }
         }
         Err(e) => {
-            println!("[err] Config failed to load: {}", e);
+            println!("[err] Config failed to load: {e}");
             issues.push("config");
         }
     }

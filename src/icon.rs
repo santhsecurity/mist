@@ -6,6 +6,7 @@
 use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
 /// Generate a 64×64 RGBA icon for the system tray.
+#[must_use]
 pub fn app_icon_rgba() -> Option<(Vec<u8>, u32, u32)> {
     let size = 64u32;
     let mut pixmap = Pixmap::new(size, size)?;
@@ -68,9 +69,9 @@ fn unpremultiply_rgba(data: &[u8]) -> Vec<u8> {
         if a == 0 {
             out.extend_from_slice(&[0, 0, 0, 0]);
         } else {
-            let r = ((chunk[0] as u16 * 255) / a as u16) as u8;
-            let g = ((chunk[1] as u16 * 255) / a as u16) as u8;
-            let b = ((chunk[2] as u16 * 255) / a as u16) as u8;
+            let r = ((u16::from(chunk[0]) * 255) / u16::from(a)) as u8;
+            let g = ((u16::from(chunk[1]) * 255) / u16::from(a)) as u8;
+            let b = ((u16::from(chunk[2]) * 255) / u16::from(a)) as u8;
             out.extend_from_slice(&[r, g, b, a]);
         }
     }

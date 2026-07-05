@@ -53,11 +53,11 @@ fn init() -> Option<Feedback> {
     let (tx, rx) = channel::<Vec<f32>>();
 
     std::thread::spawn(move || {
-        let err_fn = |err| warn!("Audio feedback stream error: {}", err);
+        let err_fn = |err| warn!("Audio feedback stream error: {err}");
         let stream = match device.build_output_stream(
             &config,
             move |data: &mut [f32], _| {
-                let mut buf = current_cb.lock().unwrap_or_else(|p| p.into_inner());
+                let mut buf = current_cb.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                 for frame in data.chunks_mut(channels) {
                     let sample = if buf.is_empty() { 0.0 } else { buf.remove(0) };
                     for ch in frame.iter_mut() {
@@ -70,19 +70,19 @@ fn init() -> Option<Feedback> {
         ) {
             Ok(s) => s,
             Err(e) => {
-                warn!("Audio feedback init failed: {}", e);
+                warn!("Audio feedback init failed: {e}");
                 return;
             }
         };
 
         if let Err(e) = stream.play() {
-            warn!("Audio feedback play failed: {}", e);
+            warn!("Audio feedback play failed: {e}");
             return;
         }
 
         loop {
             if let Ok(buf) = rx.recv() {
-                let mut guard = current.lock().unwrap_or_else(|p| p.into_inner());
+                let mut guard = current.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                 *guard = buf;
             }
         }
@@ -96,6 +96,7 @@ fn init() -> Option<Feedback> {
 }
 
 /// A short sinusoidal click with a Hann envelope.
+#[must_use]
 pub fn click_buffer_len(sample_rate: u32, duration_secs: f32) -> usize {
     (sample_rate as f32 * duration_secs).max(1.0) as usize
 }

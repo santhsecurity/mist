@@ -55,7 +55,7 @@ pub fn init_tray() -> TrayState {
         .build();
 
     if let Err(ref e) = icon {
-        warn!("Failed to create tray icon: {}", e);
+        warn!("Failed to create tray icon: {e}");
     }
 
     TrayState {

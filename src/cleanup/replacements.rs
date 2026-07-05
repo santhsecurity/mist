@@ -19,7 +19,7 @@ pub fn apply(text: &str, replacements: &[ReplacementEntry]) -> String {
     let mut result = text.to_string();
     for entry in replacements {
         let escaped = regex::escape(&entry.pattern);
-        let pattern = format!(r"(?i)\b{}\b", escaped);
+        let pattern = format!(r"(?i)\b{escaped}\b");
         if let Ok(re) = Regex::new(&pattern) {
             result = re
                 .replace_all(&result, entry.replacement.as_str())

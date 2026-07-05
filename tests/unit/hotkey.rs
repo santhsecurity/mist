@@ -58,7 +58,7 @@ fn test_all_modifier_combinations() {
         "Alt+Ctrl+Shift+Meta+O",
     ];
     for combo in &combos {
-        assert!(parse_hotkey(combo).is_ok(), "failed to parse {}", combo);
+        assert!(parse_hotkey(combo).is_ok(), "failed to parse {combo}");
     }
 }
 

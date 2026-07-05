@@ -86,6 +86,7 @@ pub struct DictionarySnapshot {
 
 impl DictionarySnapshot {
     /// Build a lookup map from lowercased pattern → canonical correction.
+    #[must_use]
     pub fn correction_map(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         for entry in &self.corrections {
@@ -151,8 +152,7 @@ fn default_max_recording_secs() -> u32 {
 
 fn default_n_threads() -> u32 {
     let n = std::thread::available_parallelism()
-        .map(|n| n.get() as u32)
-        .unwrap_or(4);
+        .map_or(4, |n| n.get() as u32);
     // Use all cores but cap at 16 to avoid diminishing returns.
     n.min(16)
 }
@@ -227,6 +227,7 @@ impl Config {
     /// Looks for `.mist-dictionary.toml` in the cwd and parent directories
     /// (up to 5 levels). Returns terms, corrections, and replacements that
     /// should be merged with the global config.
+    #[must_use]
     pub fn project_vocab() -> ProjectVocab {
         let Ok(mut dir) = std::env::current_dir() else {
             return ProjectVocab::default();
@@ -302,6 +303,7 @@ impl Config {
     /// current project's `.mist-dictionary.toml` (if any). Call this before
     /// every transcription so edits to the project dictionary are picked up
     /// without restarting the daemon.
+    #[must_use]
     pub fn dictionary_snapshot(&self) -> DictionarySnapshot {
         let project = Self::project_vocab();
         let mut terms = self.dictionary.clone();
@@ -323,17 +325,20 @@ impl Config {
 
     /// Build the effective corrections by merging global and per-project
     /// correction entries.
+    #[must_use]
     pub fn effective_corrections(&self) -> Vec<CorrectionEntry> {
         self.dictionary_snapshot().corrections
     }
 
     /// Build the effective replacements by merging global and per-project
     /// replacement entries.
+    #[must_use]
     pub fn effective_replacements(&self) -> Vec<ReplacementEntry> {
         self.dictionary_snapshot().replacements
     }
 
-    /// Build a HashMap from lowercased pattern → canonical correction.
+    /// Build a `HashMap` from lowercased pattern → canonical correction.
+    #[must_use]
     pub fn correction_map(&self) -> HashMap<String, String> {
         self.dictionary_snapshot().correction_map()
     }

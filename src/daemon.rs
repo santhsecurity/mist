@@ -49,10 +49,9 @@ pub fn run() -> Result<()> {
         let model_path = match config_clone.model_path() {
             Ok(p) => p,
             Err(e) => {
-                error!("Failed to resolve model path: {}", e);
+                error!("Failed to resolve model path: {e}");
                 let _ = result_tx.send(TranscriptionResult::Error(format!(
-                    "Model path error: {}",
-                    e
+                    "Model path error: {e}"
                 )));
                 return;
             }
@@ -61,10 +60,9 @@ pub fn run() -> Result<()> {
         let mut engine = match stt::SttEngine::new(&model_path) {
             Ok(e) => e,
             Err(err) => {
-                error!("Failed to load STT engine: {}", err);
+                error!("Failed to load STT engine: {err}");
                 let _ = result_tx.send(TranscriptionResult::Error(format!(
-                    "STT load error: {}",
-                    err
+                    "STT load error: {err}"
                 )));
                 return;
             }
@@ -88,7 +86,7 @@ pub fn run() -> Result<()> {
                         config_clone.n_threads,
                     ) {
                         Ok(text) if !text.is_empty() => {
-                            info!("[live] {}", text);
+                            info!("[live] {text}");
                             let _ = result_tx.send(TranscriptionResult::Preview(text));
                         }
                         _ => {}
@@ -117,21 +115,21 @@ pub fn run() -> Result<()> {
                                 match cleanup::cleanup(&text, &config_clone) {
                                     Ok(cleaned) if !cleaned.is_empty() => text = cleaned,
                                     Ok(_) => {}
-                                    Err(e) => warn!("Cleanup failed: {}", e),
+                                    Err(e) => warn!("Cleanup failed: {e}"),
                                 }
                             }
                             let elapsed = start.elapsed();
                             info!("Transcribed in {:.1}s: {}", elapsed.as_secs_f32(), text);
 
                             if let Err(e) = paste::paste_text(&text) {
-                                error!("Paste failed: {}", e);
+                                error!("Paste failed: {e}");
                                 let _ = result_tx.send(TranscriptionResult::PasteFailed(text));
                             } else {
                                 let _ = result_tx.send(TranscriptionResult::Done(text, elapsed));
                             }
                         }
                         Err(e) => {
-                            error!("Transcription failed: {}", e);
+                            error!("Transcription failed: {e}");
                             let _ = result_tx.send(TranscriptionResult::Error(e.to_string()));
                         }
                     }
@@ -229,7 +227,7 @@ pub fn run() -> Result<()> {
                     }
                     if tray.open_config_id.as_ref() == Some(&event.id) {
                         if let Ok(path) = config::Config::path() {
-                            let dir = path.parent().map(|p| p.to_path_buf()).unwrap_or(path);
+                            let dir = path.parent().map(std::path::Path::to_path_buf).unwrap_or(path);
                             let _ = open_path(&dir);
                         }
                     }
@@ -323,7 +321,7 @@ pub fn run() -> Result<()> {
                             match audio::AudioRecorder::new(config.max_recording_secs) {
                                 Ok(mut r) => {
                                     if let Err(e) = r.start() {
-                                        error!("Failed to start recording: {}", e);
+                                        error!("Failed to start recording: {e}");
                                     } else {
                                         recording = true;
                                         recording_start = Instant::now();
@@ -340,7 +338,7 @@ pub fn run() -> Result<()> {
                                         }
                                     }
                                 }
-                                Err(e) => error!("Recorder init failed: {}", e),
+                                Err(e) => error!("Recorder init failed: {e}"),
                             }
                         }
                         HotKeyState::Released if recording && !config.toggle_mode => {
@@ -531,7 +529,7 @@ fn stop_recording(
                 let _ = stt_tx.send(Job::Final(samples, snapshot));
             }
             Err(e) => {
-                error!("Failed to stop recording: {}", e);
+                error!("Failed to stop recording: {e}");
                 if config.show_overlay {
                     overlay.set_state(overlay::OverlayState::Error);
                     overlay.set_text("Mic error");
@@ -548,6 +546,6 @@ fn truncate(s: &str, max: usize) -> String {
         s.to_string()
     } else {
         let truncated: String = s.chars().take(max.saturating_sub(1)).collect();
-        format!("{}…", truncated)
+        format!("{truncated}…")
     }
 }
