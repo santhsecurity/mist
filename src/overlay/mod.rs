@@ -132,8 +132,8 @@ impl Overlay {
 
     pub fn draw(&mut self) -> Result<()> {
         let size = self.window.inner_size();
-        let width = size.width as u32;
-        let height = size.height as u32;
+        let width = size.width;
+        let height = size.height;
         if width == 0 || height == 0 {
             return Ok(());
         }

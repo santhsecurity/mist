@@ -7,7 +7,7 @@ static ENV_LOCK: Mutex<()> = Mutex::new(());
 #[test]
 fn test_paste_text_exists_and_has_correct_signature() {
     // Only verify the function signature compiles. Do NOT call paste_text
-    // with actual text — it invokes xdotool/wtype which types into the
+    // with actual text - it invokes xdotool/wtype which types into the
     // focused window.
     let _fn_ptr: fn(&str) -> anyhow::Result<()> = mist::paste::paste_text;
 }

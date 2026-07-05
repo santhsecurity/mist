@@ -84,13 +84,13 @@ fn fast_cleanup_um_chain() {
 
 #[test]
 fn fast_cleanup_um_uppercase() {
-    // Now case-insensitive — UM is removed.
+    // Now case-insensitive - UM is removed.
     assert_eq!(fast_cleanup("UM hello").unwrap(), "hello");
 }
 
 #[test]
 fn fast_cleanup_um_no_spaces() {
-    // "um,um" — "um" at word boundary with comma after: regex removes the
+    // "um,um" - "um" at word boundary with comma after: regex removes the
     // first "um," leaving just "um" which is then also removed.
     let result = fast_cleanup("um,um").unwrap();
     // The specific result depends on how the regex handles this edge case.

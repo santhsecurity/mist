@@ -45,7 +45,7 @@ pub fn apply(text: &str, config: &Config) -> String {
                 result.push_str(correct);
             } else {
                 // Fuzzy match against all patterns. Skip candidates whose
-                // length differs by more than 40% — they can't possibly reach
+                // length differs by more than 40% - they can't possibly reach
                 // the 0.88 Jaro-Winkler threshold and this avoids computing
                 // the full similarity for most dictionary entries.
                 let mut best_match: Option<(&str, f64)> = None;

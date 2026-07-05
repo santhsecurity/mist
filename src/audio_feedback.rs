@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 /// Tiny mono click played on the default output device when dictation starts
 /// or stops. If the device is unavailable, the failure is logged once and the
 /// feature is silently disabled for the session.
-
 struct Feedback {
     sender: Sender<Vec<f32>>,
     start_click: Vec<f32>,
@@ -97,6 +96,10 @@ fn init() -> Option<Feedback> {
 }
 
 /// A short sinusoidal click with a Hann envelope.
+pub fn click_buffer_len(sample_rate: u32, duration_secs: f32) -> usize {
+    (sample_rate as f32 * duration_secs).max(1.0) as usize
+}
+
 fn click(sample_rate: u32, frequency: f32, duration_secs: f32) -> Vec<f32> {
     let samples = (sample_rate as f32 * duration_secs).max(1.0) as usize;
     let two_pi = 2.0 * std::f32::consts::PI;
@@ -110,4 +113,32 @@ fn click(sample_rate: u32, frequency: f32, duration_secs: f32) -> Vec<f32> {
         out.push(phase.sin() * envelope * 0.35);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn click_buffer_length_matches_duration() {
+        let sr = 48000;
+        let buf = click(sr, 1000.0, 0.06);
+        assert_eq!(buf.len(), click_buffer_len(sr, 0.06));
+        assert!(!buf.is_empty());
+    }
+
+    #[test]
+    fn click_amplitude_is_bounded() {
+        let buf = click(48000, 1000.0, 0.06);
+        for &s in &buf {
+            assert!(s.abs() <= 1.0);
+        }
+    }
+
+    #[test]
+    fn click_starts_and_ends_near_zero() {
+        let buf = click(48000, 1000.0, 0.06);
+        assert!(buf[0].abs() < 0.01);
+        assert!(buf.last().unwrap().abs() < 0.01);
+    }
 }

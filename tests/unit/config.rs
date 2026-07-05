@@ -1,6 +1,6 @@
 mod helpers;
 
-use mist::config::Config;
+use mist::config::{Config, CorrectionEntry};
 use std::sync::Mutex;
 use tempfile::tempdir;
 
@@ -157,4 +157,18 @@ fn test_dictionary_snapshot_merges_global_terms() {
     let snapshot = config.dictionary_snapshot();
     assert!(snapshot.terms.contains(&"Rust".to_string()));
     assert!(snapshot.terms.contains(&"Kubernetes".to_string()));
+}
+
+#[test]
+fn test_dictionary_snapshot_correction_map_is_case_insensitive() {
+    let mut config = Config::default();
+    config.corrections.push(CorrectionEntry {
+        patterns: vec!["rust".to_string(), "rusr".to_string()],
+        correct: "Rust".to_string(),
+    });
+
+    let snapshot = config.dictionary_snapshot();
+    let map = snapshot.correction_map();
+    assert_eq!(map.get("rust"), Some(&"Rust".to_string()));
+    assert_eq!(map.get("rusr"), Some(&"Rust".to_string()));
 }

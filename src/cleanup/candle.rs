@@ -188,7 +188,7 @@ fn download_verified(
             if let Some(total) = content_length {
                 let pct = (downloaded as f64 / total as f64 * 100.0) as u32;
                 info!(
-                    "  {} — {} / {} MB ({}%)",
+                    "  {} - {} / {} MB ({}%)",
                     label,
                     downloaded / (1024 * 1024),
                     total / (1024 * 1024),
@@ -196,7 +196,7 @@ fn download_verified(
                 );
             } else {
                 info!(
-                    "  {} — {} MB downloaded...",
+                    "  {} - {} MB downloaded...",
                     label,
                     downloaded / (1024 * 1024)
                 );

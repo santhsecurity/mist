@@ -31,10 +31,12 @@ pub fn app_icon_rgba() -> Option<(Vec<u8>, u32, u32)> {
     pb.line_to(size as f32 - margin, bottom);
     let path = pb.finish()?;
 
-    let mut stroke = Stroke::default();
-    stroke.width = 5.0;
-    stroke.line_cap = tiny_skia::LineCap::Round;
-    stroke.line_join = tiny_skia::LineJoin::Round;
+    let stroke = Stroke {
+        width: 5.0,
+        line_cap: tiny_skia::LineCap::Round,
+        line_join: tiny_skia::LineJoin::Round,
+        ..Stroke::default()
+    };
     let mut paint = Paint::default();
     paint.set_color_rgba8(255, 255, 255, 255);
     paint.anti_alias = true;
@@ -73,4 +75,17 @@ fn unpremultiply_rgba(data: &[u8]) -> Vec<u8> {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_icon_has_expected_dimensions() {
+        let (rgba, width, height) = app_icon_rgba().expect("icon should render");
+        assert_eq!(width, 64);
+        assert_eq!(height, 64);
+        assert_eq!(rgba.len(), (width * height * 4) as usize);
+    }
 }

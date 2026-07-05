@@ -14,7 +14,7 @@ const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
 /// `config.cleanup_command` is passed directly to `sh -c` and executed as a
 /// shell command. The transcribed text is delivered via stdin (not interpolated
 /// into the command string), so it is not subject to shell injection. However,
-/// the command value itself **is** trusted user configuration — do not populate
+/// the command value itself **is** trusted user configuration - do not populate
 /// it from untrusted sources.
 ///
 /// # Timeout
@@ -39,7 +39,7 @@ pub fn cleanup(text: &str, config: &Config) -> Result<String> {
         // Drop stdin to signal EOF so the child can finish.
     }
 
-    // Wait with timeout — spawn a thread to wait, and kill if it takes too long.
+    // Wait with timeout - spawn a thread to wait, and kill if it takes too long.
     let start = std::time::Instant::now();
     loop {
         match child.try_wait()? {

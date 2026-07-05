@@ -52,7 +52,7 @@ mod tests {
 
     #[test]
     fn preserves_like_as_verb() {
-        // "like" is NOT removed — it has legitimate uses as a verb/preposition.
+        // "like" is NOT removed - it has legitimate uses as a verb/preposition.
         let text = "I like dogs";
         assert_eq!(cleanup(text).unwrap(), "I like dogs");
     }

@@ -12,7 +12,7 @@ pub enum OverlayState {
 
 /// Minimal monochrome bar renderer for the Mist overlay.
 ///
-/// No waveforms, no neon, no gradients — just a sleek black pill with white
+/// No waveforms, no neon, no gradients - just a sleek black pill with white
 /// typography. The state is communicated by the text itself.
 pub struct Renderer {
     width: u32,
@@ -93,8 +93,10 @@ impl Renderer {
         let mut border_paint = Paint::default();
         border_paint.set_color_rgba8(255, 255, 255, 22);
         border_paint.anti_alias = true;
-        let mut border_stroke = Stroke::default();
-        border_stroke.width = 1.0;
+        let border_stroke = Stroke {
+            width: 1.0,
+            ..Stroke::default()
+        };
         pixmap.stroke_path(&capsule, &border_paint, &border_stroke, Transform::identity(), None);
 
         // Text is the entire UI. Center it in the bar.
@@ -172,6 +174,7 @@ fn measure_text_width(font: &fontdue::Font, text: &str, px: f32) -> f32 {
     width
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_text_rgba(
     buffer: &mut [u8],
     width: u32,
@@ -255,7 +258,7 @@ fn draw_text_rgba(
                 continue;
             }
             let alpha = a as f32 / 255.0;
-            let idx = ((ty as u32 * width + tx as u32) * 4) as usize;
+            let idx = ((ty * width + tx) * 4) as usize;
             let inv = 1.0 - alpha;
             buffer[idx] = (255.0 * alpha + buffer[idx] as f32 * inv) as u8;
             buffer[idx + 1] = (255.0 * alpha + buffer[idx + 1] as f32 * inv) as u8;
@@ -267,6 +270,7 @@ fn draw_text_rgba(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn blit_glyph_mask(
     mask: &mut [u8],
     width: u32,
@@ -318,6 +322,7 @@ fn load_font() -> Option<fontdue::Font> {
         });
         if let Some(id) = id {
             if let Some(font) = db.with_face_data(id, |data, _index| {
+                #[allow(clippy::unnecessary_to_owned)]
                 fontdue::Font::from_bytes(
                     data.to_vec(),
                     fontdue::FontSettings {

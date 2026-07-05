@@ -17,7 +17,7 @@ INTERACTIVE=false
 echo "━━━ Mist Installer ━━━"
 echo ""
 
-# Detect a suitable linker — prefer cc, fall back to gcc, then clang.
+# Detect a suitable linker - prefer cc, fall back to gcc, then clang.
 LINKER=""
 for candidate in cc gcc clang; do
     if command -v "$candidate" &>/dev/null; then
@@ -36,10 +36,10 @@ FEATURES=""
 if [[ "$*" != *"--features"* ]]; then
     if [ "$OS" = "Darwin" ] && [ "$ARCH" = "arm64" ]; then
         FEATURES="coreml"
-        echo "Detected Apple Silicon — enabling CoreML acceleration."
+        echo "Detected Apple Silicon - enabling CoreML acceleration."
     elif [ "$OS" = "Linux" ] && pkg-config --exists openblas 2>/dev/null; then
         FEATURES="openblas"
-        echo "Detected OpenBLAS — enabling CPU BLAS acceleration."
+        echo "Detected OpenBLAS - enabling CPU BLAS acceleration."
     fi
 fi
 

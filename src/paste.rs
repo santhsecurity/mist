@@ -28,7 +28,7 @@ pub fn typing_backend_available() -> bool {
 /// The detected typing backend on Linux, cached for the process lifetime.
 ///
 /// Detection runs once on first paste. If no typing tool is installed at
-/// startup, the `None` result is cached permanently — installing xdotool
+/// startup, the `None` result is cached permanently - installing xdotool
 /// later won't take effect until Mist is restarted. This is intentional for
 /// a daemon: the environment shouldn't change under a running process.
 #[cfg(target_os = "linux")]
@@ -74,7 +74,7 @@ fn detect_linux_backend() -> Option<LinuxTypingBackend> {
 }
 
 /// Type text directly at the current cursor position.
-/// No clipboard involved — text appears exactly as if typed on a keyboard.
+/// No clipboard involved - text appears exactly as if typed on a keyboard.
 pub fn paste_text(text: &str) -> Result<()> {
     #[cfg(target_os = "macos")]
     return type_macos(text);

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 — Unreleased
+## 0.2.0 - Unreleased
 
 ### Fixed
 - **CPU burn**: Event loop now sleeps 16ms between iterations instead of busy-polling
@@ -53,7 +53,7 @@
 ### Removed
 - Junk `tests/foo/` directory and empty fixture directories
 
-## 0.1.0 — 2026-04-25
+## 0.1.0 - 2026-04-25
 
 ### Added
 - Push-to-talk voice dictation with global hotkey (`Alt+Shift+D` default)
@@ -62,8 +62,8 @@
 - Cross-platform paste: `enigo` on macOS/Windows, `xdotool`/`wtype`/`ydotool` on Linux
 - Modular cleanup backends: `fast` (default), `candle`, `ollama`, `command`, `none`
 - Native Rust LLM cleanup via Candle (Qwen2 0.5B Instruct GGUF, ~300MB)
-- Live stream preview — chunked transcription while recording
-- Dictionary bias — Whisper initial prompt for domain-specific terms
+- Live stream preview - chunked transcription while recording
+- Dictionary bias - Whisper initial prompt for domain-specific terms
 - Floating recording overlay on macOS/Windows (tao + softbuffer)
 - Desktop notifications on Linux
 - TOML configuration with interactive `mist setup` TUI

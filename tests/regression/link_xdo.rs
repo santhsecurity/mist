@@ -14,7 +14,7 @@ fn test_paste_on_linux_uses_xdo_tools_not_enigo() {
     let result = paste_text("hello");
     match result {
         Ok(()) => {
-            // A typing tool is installed and paste succeeded — that's correct.
+            // A typing tool is installed and paste succeeded - that's correct.
         }
         Err(e) => {
             let err = e.to_string();

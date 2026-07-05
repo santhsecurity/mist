@@ -157,7 +157,7 @@ pub fn list_models() -> Vec<ModelInfo> {
         .collect()
 }
 
-fn model_path(name: &str) -> Result<PathBuf> {
+pub fn model_path(name: &str) -> Result<PathBuf> {
     let dirs = ProjectDirs::from("", "", "mist")
         .ok_or_else(|| anyhow::anyhow!("Could not find data directory"))?;
     Ok(dirs.data_dir().join(format!("ggml-{name}.bin")))

@@ -113,7 +113,7 @@ fn config_wrong_types() {
 
 // NOTE: paste_text tests are deliberately limited to the error path.
 // Calling paste_text with actual text invokes xdotool/wtype/ydotool which
-// types into whatever window is focused — not safe in a test environment.
+// types into whatever window is focused - not safe in a test environment.
 #[test]
 fn paste_no_tool_available() {
     // With PATH neutered, paste should fail cleanly.

@@ -1,0 +1,257 @@
+//! CLI parsing, command dispatch, and one-off utility commands for Mist.
+
+use anyhow::Result;
+use clap::{Parser, Subcommand};
+use mist::{config, overlay, paste, stt};
+use std::fs::OpenOptions;
+use std::path::PathBuf;
+
+#[derive(Parser)]
+#[command(name = "mist", about = "Local voice dictation daemon", version = env!("CARGO_PKG_VERSION"))]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Run the dictation daemon (default)
+    Run,
+    /// Interactive configuration
+    Setup,
+    /// Manage the global dictionary
+    Dictionary {
+        #[command(subcommand)]
+        action: DictAction,
+    },
+    /// Show daemon status and configuration
+    Status,
+    /// Generate overlay screenshots for documentation
+    Screenshot {
+        /// Output directory (default: assets/screenshots)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Show recent daemon log output
+    Logs,
+    /// Download or inspect Whisper models
+    Model {
+        #[command(subcommand)]
+        action: ModelAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ModelAction {
+    /// List available models and whether they are installed
+    List,
+    /// Download a model by name (e.g. small.en)
+    Download { name: String },
+    /// Delete a downloaded model
+    Remove { name: String },
+}
+
+#[derive(Subcommand)]
+enum DictAction {
+    /// Add a word to the global dictionary
+    Add { word: String },
+    /// Remove a word from the global dictionary
+    Remove { word: String },
+    /// List dictionary, corrections, and replacements
+    List,
+    /// Import a TOML dictionary file into the global config
+    Import { path: PathBuf },
+    /// Export the global dictionary to a TOML file
+    Export { path: PathBuf },
+}
+
+/// Maximum log file size before we rotate (10 MB).
+const MAX_LOG_SIZE: u64 = 10 * 1024 * 1024;
+
+pub fn run() -> Result<()> {
+    init_logging();
+    let cli = Cli::parse();
+
+    match cli.command {
+        Some(Commands::Setup) => config::Config::setup_interactive(),
+        Some(Commands::Dictionary { action }) => handle_dictionary(action),
+        Some(Commands::Status) => show_status(),
+        Some(Commands::Screenshot { output }) => generate_screenshots(output),
+        Some(Commands::Logs) => show_logs(),
+        Some(Commands::Model { action }) => handle_model(action),
+        Some(Commands::Run) | None => crate::daemon::run(),
+    }
+}
+
+fn init_logging() {
+    if let Ok(val) = std::env::var("RUST_LOG") {
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(&val)).init();
+    } else {
+        // Default: log to file with rotation.
+        if let Some(dirs) = directories::ProjectDirs::from("", "", "mist") {
+            let log_path = dirs.data_dir().join("mist.log");
+            let _ = std::fs::create_dir_all(dirs.data_dir());
+
+            // Simple size-based rotation: if the log exceeds MAX_LOG_SIZE,
+            // rename it to .log.old and start a fresh one.
+            if log_path.exists() {
+                if let Ok(meta) = std::fs::metadata(&log_path) {
+                    if meta.len() > MAX_LOG_SIZE {
+                        let old = log_path.with_extension("log.old");
+                        let _ = std::fs::rename(&log_path, &old);
+                    }
+                }
+            }
+
+            let file = OpenOptions::new().create(true).append(true).open(&log_path);
+            if let Ok(file) = file {
+                env_logger::Builder::from_default_env()
+                    .filter_level(log::LevelFilter::Info)
+                    .target(env_logger::Target::Pipe(Box::new(file)))
+                    .init();
+                return;
+            }
+        }
+        // Fallback to stderr.
+        env_logger::init();
+    }
+}
+
+fn generate_screenshots(output: Option<PathBuf>) -> Result<()> {
+    let dir = output.unwrap_or_else(|| PathBuf::from("assets/screenshots"));
+    std::fs::create_dir_all(&dir)?;
+
+    let mut renderer = overlay::Renderer::new(280, 32);
+
+    // Listening.
+    renderer.set_state(overlay::OverlayState::Listening);
+    renderer.set_text("LISTENING");
+    save_overlay_png(&mut renderer, &dir.join("listening.png"))?;
+
+    // Processing.
+    renderer.set_state(overlay::OverlayState::Processing);
+    renderer.set_text("PROCESSING");
+    save_overlay_png(&mut renderer, &dir.join("processing.png"))?;
+
+    // Done: final transcribed text.
+    renderer.set_state(overlay::OverlayState::Done);
+    renderer.set_text("Deploy to Kubernetes.");
+    save_overlay_png(&mut renderer, &dir.join("done.png"))?;
+
+    println!("Screenshots saved to {:?}", dir);
+    Ok(())
+}
+
+fn save_overlay_png(renderer: &mut overlay::Renderer, path: &std::path::Path) -> Result<()> {
+    use image::{ImageBuffer, Rgba};
+    let width = renderer.width();
+    let height = renderer.height();
+    let rgba = renderer.render();
+    let img: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_raw(width, height, rgba)
+        .ok_or_else(|| anyhow::anyhow!("invalid image buffer"))?;
+    img.save(path)?;
+    Ok(())
+}
+
+fn handle_dictionary(action: DictAction) -> Result<()> {
+    let mut config = config::Config::load()?;
+    match action {
+        DictAction::Add { word } => {
+            if config.add_dictionary_word(&word) {
+                config.save()?;
+                println!("Added '{}' to dictionary.", word);
+            } else {
+                println!("'{}' is already in the dictionary.", word);
+            }
+        }
+        DictAction::Remove { word } => {
+            if config.remove_dictionary_word(&word) {
+                config.save()?;
+                println!("Removed '{}' from dictionary.", word);
+            } else {
+                println!("'{}' is not in the dictionary.", word);
+            }
+        }
+        DictAction::List => {
+            println!("Dictionary terms: {:?}", config.dictionary);
+            println!("Corrections: {:?}", config.corrections);
+            println!("Replacements: {:?}", config.replacements);
+        }
+        DictAction::Import { path } => {
+            config.import_dictionary(&path)?;
+            config.save()?;
+            println!("Imported dictionary from {:?}.", path);
+        }
+        DictAction::Export { path } => {
+            config.export_dictionary(&path)?;
+            println!("Exported dictionary to {:?}.", path);
+        }
+    }
+    Ok(())
+}
+
+fn handle_model(action: ModelAction) -> Result<()> {
+    match action {
+        ModelAction::List => {
+            for info in stt::list_models() {
+                let status = if info.installed { "installed" } else { "not installed" };
+                println!(
+                    "  {:24} ~{:>5} MB   {}",
+                    info.name, info.size_mb, status
+                );
+            }
+        }
+        ModelAction::Download { name } => {
+            stt::download_model_by_name(&name)?;
+            println!("Downloaded model '{}'.", name);
+        }
+        ModelAction::Remove { name } => {
+            stt::remove_model(&name)?;
+            println!("Removed model '{}'.", name);
+        }
+    }
+    Ok(())
+}
+
+fn show_logs() -> Result<()> {
+    let log_path = directories::ProjectDirs::from("", "", "mist")
+        .map(|d| d.data_dir().join("mist.log"));
+    let Some(path) = log_path else {
+        anyhow::bail!("Could not determine project data directory.");
+    };
+    if !path.exists() {
+        println!("No log file found at {:?}", path);
+        return Ok(());
+    }
+    let contents = std::fs::read_to_string(&path)?;
+    let lines: Vec<&str> = contents.lines().collect();
+    let tail = lines.iter().rev().take(200).rev().copied().collect::<Vec<_>>();
+    for line in tail {
+        println!("{}", line);
+    }
+    Ok(())
+}
+
+fn show_status() -> Result<()> {
+    let config = config::Config::load()?;
+    let data_dir =
+        directories::ProjectDirs::from("", "", "mist").map(|d| d.data_dir().to_path_buf());
+    let typing_ok = paste::typing_backend_available();
+
+    println!("Mist status");
+    println!("  Config path:   {:?}", config::Config::path()?);
+    println!("  Config exists: {}", config::Config::path()?.exists());
+    println!("  Data dir:      {:?}", data_dir);
+    println!("  Model:         {}", config.model);
+    println!("  Model file:    {:?}", config.model_path()?);
+    println!("  Model exists:  {}", config.model_path()?.exists());
+    println!("  Hotkey:        {}", config.hotkey);
+    println!("  Cleanup:       {}", config.cleanup_backend);
+    println!("  Overlay:       {}", config.show_overlay);
+    println!("  Live stream:   {}", config.live_stream);
+    println!(
+        "  Typing backend: {}",
+        if typing_ok { "ok" } else { "missing" }
+    );
+    Ok(())
+}

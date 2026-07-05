@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=Mist
-Comment=Local voice dictation daemon — push-to-talk, transcribe, type
+Comment=Local voice dictation daemon - push-to-talk, transcribe, type
 Exec=mist run
 Type=Application
 Terminal=false
