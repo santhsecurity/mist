@@ -155,7 +155,10 @@ fn download_verified(
     use sha2::{Digest, Sha256};
     use std::io::{Read, Write};
 
-    std::fs::create_dir_all(dest.parent().unwrap())?;
+    let parent = dest
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("{} destination has no parent directory", label))?;
+    std::fs::create_dir_all(parent)?;
 
     let response = ureq::get(url)
         .timeout(std::time::Duration::from_secs(600))

@@ -221,7 +221,10 @@ pub fn download_model(dest: &Path) -> Result<()> {
     );
 
     info!("Downloading {} from HuggingFace...", model_name);
-    fs::create_dir_all(dest.parent().unwrap())?;
+    let parent = dest
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("model destination has no parent directory"))?;
+    fs::create_dir_all(parent)?;
 
     let response = ureq::get(&url)
         .timeout(std::time::Duration::from_secs(600))

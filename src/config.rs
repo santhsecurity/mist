@@ -203,7 +203,10 @@ impl Config {
 
     pub fn save(&self) -> Result<()> {
         let path = Self::path()?;
-        fs::create_dir_all(path.parent().unwrap())?;
+        let parent = path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("config path has no parent directory"))?;
+        fs::create_dir_all(parent)?;
         fs::write(&path, toml::to_string_pretty(self)?)?;
         Ok(())
     }
