@@ -89,6 +89,10 @@ name = "integration_setup_mist"
 path = "tests/integration/setup_flow.rs"
 
 [[test]]
+name = "integration_cli"
+path = "tests/integration/cli.rs"
+
+[[test]]
 name = "prop_hotkey"
 path = "tests/prop/hotkey.rs"
 
